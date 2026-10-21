@@ -43,6 +43,8 @@ class Settings:
 
     # --- Anthropic backend ---
     anthropic_api_key: str = field(default="", repr=False)
+    # Needed only for API keys that are not scoped to a workspace (the API then asks for this header).
+    anthropic_workspace_id: str = ""
     model: str = "claude-sonnet-5-5"
     analysis_model: str = "claude-sonnet-5-5"
     effort: str = "low"  # low | medium | high: lower is faster, which matters for voice
@@ -84,6 +86,7 @@ class Settings:
             timezone=get("TIMEZONE", d.timezone),
             request_timeout=float(get("REQUEST_TIMEOUT", str(d.request_timeout))),
             anthropic_api_key=get("ANTHROPIC_API_KEY", d.anthropic_api_key),
+            anthropic_workspace_id=get("ANTHROPIC_WORKSPACE_ID", d.anthropic_workspace_id),
             model=get("MODEL", d.model),
             analysis_model=get("ANALYSIS_MODEL", d.analysis_model),
             effort=get("EFFORT", d.effort),

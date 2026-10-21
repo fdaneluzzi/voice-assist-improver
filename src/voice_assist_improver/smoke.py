@@ -34,25 +34,36 @@ async def list_tools(settings: Settings) -> int:
 async def ask(settings: Settings, question: str) -> int:
     backend = create_backend(settings)
     started = time.monotonic()
-    first = None
     try:
-        request = ChatRequest(model=settings.model, messages=[{"role": "user", "content": question}])
-        async for event in backend.stream(request):
-            if isinstance(event, TextDelta):
-                first = first if first is not None else time.monotonic() - started
-                print(event.text, end="", flush=True)
-            elif isinstance(event, ToolCall):
-                print(f"\n[tool call] {event.name} {event.input}", flush=True)
-            elif isinstance(event, ToolResult):
-                flag = " (error)" if event.is_error else ""
-                print(f"[tool result{flag}] {event.output[:120]!r}", flush=True)
-            elif isinstance(event, Done) and event.usage:
-                first_text = first if first is not None else float("nan")
-                print(f"\n\n[done] total {time.monotonic() - started:.2f}s, first text {first_text:.2f}s, "
-                      f"usage {event.usage}")
-        return 0
+        return await _ask(backend, settings, question, started)
+    except Exception as exc:
+        status = getattr(exc, "status_code", None)
+        detail = getattr(exc, "message", None) or str(exc)
+        request_id = getattr(exc, "request_id", None)
+        print(f"\nERROR ({type(exc).__name__}{f', HTTP {status}' if status else ''}): {detail}"
+              + (f"\n  request id: {request_id}" if request_id else ""))
+        return 1
     finally:
         await backend.close()
+
+
+async def _ask(backend, settings: Settings, question: str, started: float) -> int:
+    first = None
+    request = ChatRequest(model=settings.model, messages=[{"role": "user", "content": question}])
+    async for event in backend.stream(request):
+        if isinstance(event, TextDelta):
+            first = first if first is not None else time.monotonic() - started
+            print(event.text, end="", flush=True)
+        elif isinstance(event, ToolCall):
+            print(f"\n[tool call] {event.name} {event.input}", flush=True)
+        elif isinstance(event, ToolResult):
+            flag = " (error)" if event.is_error else ""
+            print(f"[tool result{flag}] {event.output[:120]!r}", flush=True)
+        elif isinstance(event, Done) and event.usage:
+            first_text = first if first is not None else float("nan")
+            print(f"\n\n[done] total {time.monotonic() - started:.2f}s, first text {first_text:.2f}s, "
+                  f"usage {event.usage}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

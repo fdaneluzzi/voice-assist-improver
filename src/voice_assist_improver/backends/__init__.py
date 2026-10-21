@@ -28,6 +28,8 @@ def create_backend(settings: Settings) -> Backend:
             raise ValueError("VAI_HA_MCP_TOKEN (or VAI_HA_TOKEN) is not set")
         mcp = MCPClient(settings.ha_mcp_url, token)
         registry = VoiceToolRegistry(mcp, settings.voice_tool_denylist, settings.tool_cache_seconds)
-        client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        workspace = settings.anthropic_workspace_id
+        headers = {"anthropic-workspace-id": workspace} if workspace else None
+        client = AsyncAnthropic(api_key=settings.anthropic_api_key, default_headers=headers)
         return AnthropicBackend(settings, registry, client, extra_close=(mcp.close,))
     raise ValueError(f"unknown backend: {settings.backend!r}")

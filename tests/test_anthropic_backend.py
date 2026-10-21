@@ -238,3 +238,25 @@ async def test_close_closes_the_client_and_extras():
     backend = AnthropicBackend(s, VoiceToolRegistry(FakeSource()), client, extra_close=(lambda: closed.append(1),))
     await backend.close()
     assert client.closed and closed == [1]
+
+
+def test_workspace_header_is_sent_only_when_configured(monkeypatch):
+    import anthropic
+
+    from voice_assist_improver.backends import create_backend
+
+    seen = {}
+
+    class Capture:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", Capture)
+    create_backend(Settings(backend="anthropic", anthropic_api_key="k", ha_mcp_token="t"))
+    assert seen["default_headers"] is None
+    create_backend(Settings(backend="anthropic", anthropic_api_key="k", ha_mcp_token="t",
+                            anthropic_workspace_id="wrkspc_123"))
+    assert seen["default_headers"] == {"anthropic-workspace-id": "wrkspc_123"}
