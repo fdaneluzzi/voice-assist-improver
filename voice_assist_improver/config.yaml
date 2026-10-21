@@ -1,5 +1,5 @@
 name: Voice Assist Improver
-version: "0.1.0"
+version: "0.1.1"
 slug: voice_assist_improver
 description: Makes Home Assistant's Assist need an LLM less and less
 url: https://github.com/fdaneluzzi/voice-assist-improver
@@ -17,6 +17,7 @@ panel_title: Voice Assist
 panel_admin: true
 options:
   anthropic_api_key: ""
+  anthropic_workspace_id: ""
   language: en
   model: claude-haiku-5-5
   analysis_model: claude-sonnet-5-5
