@@ -2,84 +2,67 @@
 
 ## Flows
 
-**Voice path (fallback).** Assist could not handle a phrase locally; Home Assistant's Ollama agent sends it
-to this app.
+**Voice path (fallback).** Assist could not handle a phrase locally; Home Assistant's Ollama agent sends it to
+the app.
 
 ```
 HA Ollama agent ──POST /api/chat──► ollama_api ──► Backend.stream(request) ──► AI service
                                         │                 │ events: text, tool calls, tool results
                                         │                 ▼
-                                        │        voice tool registry (read/control exposed entities)
+                                        │        voice tool registry ──► Home Assistant MCP server
                                         ▼
-                                  Store.add_interaction (utterance, reply, tools, timings, error)
+                                  Store.add_interaction (utterance, reply, tools, timings, cost, error)
 ```
 
-**Learning loop (scheduled).** On the configured schedule the app reads the recent interactions and asks the
-backend, with a read-only view of Home Assistant, for improvements. The answer is a list of *structured*
-suggestions. Deterministic code validates each one, stores it, and shows it in the UI.
+**Learning loop (daily, or on demand from the panel).** The analyzer groups the recent interactions by phrase,
+adds the entities exposed to Assist, and asks the model for improvements through one tool call whose input is a
+structured list. Deterministic code validates every item and stores the survivors as suggestions.
 
-**Apply.** The user marks a suggestion done (the app verifies it in Home Assistant), dismisses it, blocks it
-forever, or asks the app to do it. "Do it" is a two-step flow: a plan is shown, the user confirms, a
-deterministic executor applies it, the result is audited and can be undone.
+**Apply.** The user sees the plan and confirms. A deterministic executor re-validates against the current home,
+writes through Home Assistant (registry for aliases, the configuration API for automations and scenes), verifies
+what was written, and records an audit entry. Undo removes exactly what was created. "Dismiss" hides a suggestion
+for 30 days; "Never again" is a permanent block.
 
-## Components
+## Modules
 
 | Module | Responsibility |
 |---|---|
-| `ollama_api.py` | Ollama-compatible endpoints; network filter; streams NDJSON; records every interaction; fails soft (spoken apology) |
-| `backends/` | `Backend` interface (events: text, tool call, tool result, done). `echo` for development; `anthropic_api.py` runs the Messages API tool loop with streaming |
-| `tools.py`, `ha/mcp.py` | Voice tool registry (cached, sorted, deny-list) over Home Assistant's MCP server; a minimal MCP client |
+| `ollama_api.py` | Ollama-compatible endpoints; network filter (the UI has its own, stricter allow-list); NDJSON streaming; records every interaction; fails soft with a spoken apology |
+| `backends/` | `Backend` interface (events: text, tool call, tool result, done). `anthropic_api.py` runs the Messages API tool loop with streaming; `unconfigured.py` speaks "not set up yet" so the app still starts; `echo.py` for development |
+| `tools.py`, `ha/mcp.py` | Voice tool registry (cached, sorted for a stable prompt cache, deny-list) over Home Assistant's MCP server; a minimal MCP client |
+| `models.py` | Live list of the models the API key can use (cached); nothing about model names is hard-coded |
 | `cost.py`, `budget.py` | Token usage, cost estimates per model, monthly spending cap |
-| `smoke.py` | Manual checks against the real services (`tools`, `ask`) |
-| `store.py` | SQLite: interactions, retention, the north-star metric (`fallbacks_per_day`) |
+| `analysis.py` | Daily analysis: summarize phrases, call the model, validate, store suggestions; the schedule |
+| `ha/aliases.py`, `ha/area_aliases.py` | Alias validation and application (preserves the `None` marker), audit log; rule-based area aliases (pt-BR) |
+| `ha/automations.py` | Validated plans for sentence-triggered automations and scenes; executors with verification, rollback and undo |
+| `ha/ws.py`, `ha/entities.py` | Home Assistant websocket client; the entities exposed to Assist with their aliases |
+| `store.py` | SQLite: interactions, suggestions (with their plans and what was created), analysis runs, the north-star metric |
+| `ui.py`, `web/index.html` | The panel (served through ingress) and its JSON API: metrics, suggestions, apply/undo, delete a request |
+| `config.py` | `VAI_*` settings from environment, `.env` and the app's `/data/options.json`; defaults for running as an app |
 | `prompts/`, `i18n.py` | Built-in voice prompts and messages (en default, pt-BR) |
-| `ha/ws.py`, `ha/entities.py` | Home Assistant websocket client; entities exposed to Assist with their aliases |
-| `ha/aliases.py` | Validate, add, remove, repair aliases (preserves the `None` marker); audit log |
-| `ha/area_aliases.py` | Rule-based pt-BR "thing in the area" aliases |
-| `config.py` | `VAI_*` settings; safe defaults |
+| `smoke.py` | Manual checks against the real services |
 
-## Tool registries and permissions
+## Access and permissions
 
-Two registries, owned by the app:
+- **Home Assistant access.** As a Home Assistant app it gets a Supervisor token (`homeassistant_api`) and talks
+  to Core through the Supervisor proxy. Outside the Supervisor, a long-lived token is configured instead.
+- **Two channels, never mixed.** The voice agent only gets the tools of Home Assistant's MCP server, which covers
+  the entities exposed to Assist. The websocket and configuration APIs are used by application code only (the
+  analysis and the executors), never handed to a model.
+- **Exposure is the control (D11).** The app lists only entities exposed to Assist. On top of that, executors
+  accept a short allow-list of services with range-checked values, no templates are ever written, and the user
+  confirms every change.
 
-- **Voice tools:** read the state of and control the entities exposed to Assist (through Home Assistant's own
-  tool surface), plus optional extras (reminders, web search when enabled). Given to every voice request.
-- **Admin tools:** a small set of deterministic, validated operations (set an alias, create a scene, create a
-  sentence-triggered automation from a validated schema). Given only to the analysis job and to "do it for me".
+## Data
 
-A request never receives a tool outside its registry, so permission does not depend on what a prompt says.
+SQLite in the app's data folder. `interactions` (one row per request, with tools, tokens and cost),
+`suggestions` (fingerprint, kind, plan, status, and the ids of what was created in Home Assistant) and
+`analysis_runs`. A suggestion's fingerprint comes from its structured fields, so de-duplication and "never
+again" do not depend on the model's wording. Interactions are purged after `retention_days`.
 
-## Data (SQLite)
+## Packaging
 
-`interactions(id, ts, client, model, backend, utterance, reply, tools JSON, latency_ms, first_text_ms, error)`.
-Planned for M3: `suggestions(id, fingerprint, kind, target, phrase, payload JSON, status, created, updated)`
-and `blocklist(fingerprint)`. A fingerprint is computed from the suggestion's structured fields, so "never
-again" and de-duplication do not depend on free-form model text.
-
-## Packaging (M2)
-
-A Home Assistant app (add-on): `ingress` for the web UI with `panel_admin: true`, `homeassistant_api` for the
-Core API through the Supervisor proxy, `options`/`schema` for settings, `aarch64` and `amd64` images,
-`backup_exclude` for anything holding secrets. To be validated early: how Home Assistant reaches the app by
-hostname on the internal network (so no host port is needed), and whether the Supervisor proxy token is accepted
-by Home Assistant's MCP server.
-
-## What is ported from the personal bridge
-
-Ported and adapted in M0: alias validation and application (with the `None` fix), rule-based area aliases, the
-Ollama-compatible API surface, the network filter, the recording idea (now SQLite). To port next, adapted to
-the backend interface: suggestion analysis, learning notes, reminders, house context, alerts (through Home
-Assistant's `notify` instead of Telegram). Not ported: the Claude CLI process manager (the API replaces it).
-
-## Milestones and exit criteria
-
-| | Scope | Exit criterion |
-|---|---|---|
-| M0 | Skeleton, tests, CI | Tests and lint green; repo private |
-| M1 | Anthropic backend, Home Assistant tools, per-request prompts, cost meter, budget cap | A second pipeline in the author's Home Assistant answers real fallbacks end to end; latency and cost measured; small vs larger model compared on real phrases |
-| M2 | App packaging, minimal UI, options | Runs as an app on a small host (the author's mini PC) within its memory budget |
-| M3 | Scheduled analysis, suggestion lifecycle, metric dashboard | Fallbacks per day trend down on the author's own usage |
-| M4 | Policy layer | No sensitive domain reachable; per-command tool control |
-| M5 | "Do it for me" | No destructive change in testing; every change undoable |
-| M6 | Optional OAuth backend | Legal page re-read; docs and warnings in place |
-| M7 | Closed beta, docs, release | Beta without incidents |
+`voice_assist_improver/` is the Home Assistant app: `config.yaml` (options, schema, ingress), a `Dockerfile`
+on a small Python image, translations, docs, icon. Ingress serves `/ui/` to the admin only; the Ollama endpoint
+is reachable on the app network (Core). A Docker build sees only the app folder, so `app/` inside it is a
+generated copy of `src/` (`scripts/sync_addon.py`, checked in CI).

@@ -22,9 +22,9 @@ Facts that drove this (checked on 2026-10-21 against Anthropic's Legal and compl
 
 Consequences:
 
-- The API backend is built first (M1). Cost is small for this workload (a few cents a day with a small
+- The API backend is the one that exists. Cost is small for this workload (a few cents a day with a small
   model), and the app will show spend and support a monthly cap.
-- A subscription (OAuth) backend is an **optional, unsupported, at-your-own-risk** mode (M6), designed to stay on
+- A subscription (OAuth) backend is an **optional, unsupported, at-your-own-risk** mode that is not built yet, designed to stay on
   the permitted side: the app never shows a login screen, never touches tokens or login codes, never bundles
   or modifies the Claude Code binary (the user installs and signs in to it themselves), one person uses one
   subscription, and the docs warn about usage limits. Before publishing, re-read the legal page.
@@ -88,8 +88,7 @@ credentials. What the assistant may control is decided by exposure in Home Assis
 - Web search is a server tool, off by default, enabled per installation.
 - Cost is estimated from the API's usage fields with a price table (see `cost.py`) and enforced by an optional
   monthly cap. Prices in the table must be re-checked against the provider before trusting a cap.
-- Not yet verified against the live API (no key yet): the exact request shape comes from the SDK documentation
-  and a parameter check against the installed SDK; `smoke ask` is the first real test.
+- Verified against the live API on 2026-10-21 (voice requests with tool calls, the model list, the daily analysis).
 
 ## D11 (2026-10-21): exposure to Assist is the single control for what the app may touch
 
@@ -103,3 +102,18 @@ automation and scene executors accept a short allow-list of services with range-
 locks or alarms exists in it); and `voice_tool_denylist` can hide tools by name. Aliases may be suggested for
 any exposed entity. Tradeoff to document honestly: exposure is all-or-nothing per entity, so someone who exposes
 a lock to be able to ask whether it is locked also lets the voice agent try to operate it.
+
+## D12 (2026-10-21): models are free text, and the list comes from the provider
+
+A fixed list of model names would go stale. The model options accept any ID; the app asks the provider which
+models the key can use (cached for an hour), warns in the panel when a configured ID is missing, and offers those
+models to Home Assistant's model picker. Any `claude-*` name is accepted per request. The price table stays in
+code, so a new model is estimated with an approximate price until it is added.
+
+## D13 (2026-10-21): suggestions can create automations and scenes
+
+Beyond aliases, a suggestion can be a sentence-triggered automation or a scene. The model proposes; code builds
+the plan (the user's own phrase is always the first trigger sentence, so evidence is deterministic), validates it
+(exposed entities, allow-listed services, typed and range-checked data, no templates), shows it, and applies it
+only after confirmation, through Home Assistant's configuration API. It verifies the write, rolls back on
+failure, and can undo. Scenes are two writes (scene, then the automation that activates it), so rollback matters.

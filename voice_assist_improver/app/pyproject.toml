@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voice-assist-improver"
-version = "0.0.1"
+version = "0.2.1"
 description = "Makes Home Assistant's Assist need an LLM less and less: an Ollama-compatible fallback that learns from what Assist could not handle."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -42,3 +42,4 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501"]
+"scripts/demo_panel.py" = ["E501"]

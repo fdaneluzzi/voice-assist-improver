@@ -12,6 +12,10 @@ fall back to an LLM: powerful, but slow, paid, and needed again every time someo
 same way. Voice Assist Improver is that fallback, and it also **learns from it**: it records what Assist could
 not handle and suggests the changes that let Assist handle it by itself next time.
 
+![The panel, with example data](docs/images/panel.png)
+
+*The panel inside Home Assistant (example data): requests that needed the LLM per day, and suggestions to review.*
+
 > **Early release.** Tested by its author on Home Assistant OS. Expect rough edges and please report them.
 > Not affiliated with Home Assistant, Nabu Casa or any AI provider.
 

@@ -1,0 +1,40 @@
+name: Bug report
+description: Something does not work as described
+labels: [bug]
+body:
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Shown on the app's Info tab.
+    validations:
+      required: true
+  - type: input
+    id: ha
+    attributes:
+      label: Home Assistant version and install type
+      placeholder: "2026.10, Home Assistant OS on a mini PC"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: What you said or did, and what the panel showed.
+  - type: textarea
+    id: log
+    attributes:
+      label: App log
+      description: From the app's Log tab. **Remove API keys, tokens and anything private people said.**
+      render: text
+  - type: dropdown
+    id: model
+    attributes:
+      label: Voice model
+      options: [claude-haiku-5-5, claude-sonnet-5-5, claude-opus-5-5, other]

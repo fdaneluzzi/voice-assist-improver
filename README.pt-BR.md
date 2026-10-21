@@ -12,6 +12,10 @@ poderoso, mas lento, pago e necessário de novo toda vez que alguém pede a mesm
 Assist Improver é esse fallback e também **aprende com ele**: registra o que o Assist não conseguiu tratar e
 sugere as mudanças que fazem o Assist resolver sozinho da próxima vez.
 
+![O painel, com dados de exemplo](docs/images/panel.png)
+
+*O painel dentro do Home Assistant (dados de exemplo): pedidos que precisaram do LLM por dia e sugestões para revisar.*
+
 > **Versão inicial.** Testada pelo autor no Home Assistant OS. Espere arestas e, por favor, reporte.
 > Sem afiliação com o Home Assistant, a Nabu Casa ou qualquer fornecedor de IA.
 
