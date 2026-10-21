@@ -2,8 +2,8 @@
 
 **Makes Home Assistant's Assist need an LLM less and less.**
 
-> Status: **pre-alpha (milestone M0)**. The skeleton runs and is tested, but it does not talk to any AI
-> service yet. Not usable for real voice control. Not affiliated with Home Assistant, Nabu Casa or any AI vendor.
+> Status: **pre-alpha (milestone M1)**. The Anthropic backend and the Home Assistant tool loop are implemented and
+> tested with a simulated model; they have not yet been run against the real Anthropic API. Not affiliated with Home Assistant, Nabu Casa or any AI vendor.
 
 ## The idea
 
@@ -47,7 +47,7 @@ Home Assistant (Assist, "Ollama" agent) ──► Voice Assist Improver ──�
 | | Milestone | State |
 |---|---|---|
 | M0 | Skeleton: Ollama-compatible API, recording, storage, prompts (en / pt-BR), alias safety logic, CI | done |
-| M1 | Anthropic API backend: tool loop, Home Assistant tools, per-request prompts, cost meter | next |
+| M1 | Anthropic API backend: tool loop, Home Assistant tools, per-request prompts, cost meter, budget cap | code done and tested; live test needs an API key |
 | M2 | Home Assistant app packaging, minimal web UI, options | |
 | M3 | Suggestion engine: scheduled analysis, lifecycle (done / dismiss / never again), metric dashboard | |
 | M4 | Policy layer: tools per command, sensitive-domain audit | |
@@ -56,6 +56,13 @@ Home Assistant (Assist, "Ollama" agent) ──► Voice Assist Improver ──�
 | M7 | Closed beta, docs, release | |
 
 Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Try it (needs an Anthropic API key)
+
+```bash
+.venv/bin/python -m voice_assist_improver.smoke tools            # Home Assistant tools (no API key needed)
+.venv/bin/python -m voice_assist_improver.smoke ask "Which lights are on?"   # full round trip, prints cost
+```
 
 ## Development
 

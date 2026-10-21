@@ -10,12 +10,14 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from .backends import Backend, ChatRequest, Done, TextDelta, ToolCall, ToolResult
+from .budget import Budget
 from .config import Settings
 from .i18n import t
 from .store import Store
@@ -30,9 +32,15 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def create_app(settings: Settings, backend: Backend, store: Store) -> FastAPI:
+def create_app(settings: Settings, backend: Backend, store: Store, budget: Budget | None = None) -> FastAPI:
     networks = [ipaddress.ip_network(n, strict=False) for n in settings.allowed_networks]
-    app = FastAPI(title="voice-assist-improver")
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        yield
+        await backend.close()
+
+    app = FastAPI(title="voice-assist-improver", lifespan=lifespan)
 
     @app.middleware("http")
     async def network_filter(request: Request, call_next):
@@ -98,7 +106,14 @@ def create_app(settings: Settings, backend: Backend, store: Store) -> FastAPI:
             tools: list[dict] = []
             first_ms: int | None = None
             error: str | None = None
+            usage: dict | None = None
             try:
+                if budget is not None and budget.exceeded():
+                    error = "budget_exceeded"
+                    message = t(settings.language, "budget_reached")
+                    parts.append(message)
+                    yield message
+                    return
                 async for ev in backend.stream(req):
                     if isinstance(ev, TextDelta):
                         if first_ms is None:
@@ -113,6 +128,7 @@ def create_app(settings: Settings, backend: Backend, store: Store) -> FastAPI:
                                 tool["result"] = ev.output[:MAX_RECORDED_RESULT]
                                 tool["is_error"] = ev.is_error
                     elif isinstance(ev, Done):
+                        usage = ev.usage
                         break
             except Exception as exc:  # fail soft: speak an apology instead of an HTTP error
                 error = f"{type(exc).__name__}: {exc}"
@@ -125,10 +141,11 @@ def create_app(settings: Settings, backend: Backend, store: Store) -> FastAPI:
                 try:
                     last_user = next((m["content"] for m in reversed(turns) if m["role"] == "user"), "")
                     store.add_interaction(
-                        utterance=last_user.strip(), reply="".join(parts), client=caller, model=model,
+                        utterance=last_user.strip(), reply="".join(parts), client=caller,
+                        model=(usage or {}).get("model", model),
                         backend=backend.name, tools=tools,
                         latency_ms=int((time.monotonic() - started) * 1000),
-                        first_text_ms=first_ms, error=error)
+                        first_text_ms=first_ms, error=error, usage=usage)
                 except Exception:  # recording must never break the voice path
                     log.exception("could not record the interaction")
 

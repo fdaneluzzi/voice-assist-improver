@@ -75,3 +75,18 @@ nothing for languages that do not need it.
 
 Loopback-only listener by default. Interactions are stored locally with a retention period. Locks, alarms,
 garage doors and gates are never given aliases or suggestions. Logs never contain credentials.
+
+## D10 (2026-10-21): Anthropic backend choices
+
+- A manual streaming tool loop (not the SDK tool runner): the tools are discovered from Home Assistant at runtime,
+  text must reach the speaker as soon as it is produced, and every tool call and result is recorded.
+- The cache breakpoint sits on the built-in voice prompt; the caller's system message comes after it, so a dynamic
+  template in Home Assistant never invalidates the cached prefix (tools and base prompt). Tools are sorted by
+  name so the prefix is stable.
+- Effort is `low` by default (voice latency). Forced tool use is never used. Thinking is left to the model.
+- Server-side refusal fallback is on by default but only sent to models that support it; Haiku 5.5 has none.
+- Web search is a server tool, off by default, enabled per installation.
+- Cost is estimated from the API's usage fields with a price table (see `cost.py`) and enforced by an optional
+  monthly cap. Prices in the table must be re-checked against the provider before trusting a cap.
+- Not yet verified against the live API (no key yet): the exact request shape comes from the SDK documentation
+  and a parameter check against the installed SDK; `smoke ask` is the first real test.

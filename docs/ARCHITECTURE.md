@@ -27,7 +27,10 @@ deterministic executor applies it, the result is audited and can be undone.
 | Module | Responsibility |
 |---|---|
 | `ollama_api.py` | Ollama-compatible endpoints; network filter; streams NDJSON; records every interaction; fails soft (spoken apology) |
-| `backends/` | `Backend` interface (events: text, tool call, tool result, done). `echo` for development; `anthropic` next |
+| `backends/` | `Backend` interface (events: text, tool call, tool result, done). `echo` for development; `anthropic_api.py` runs the Messages API tool loop with streaming |
+| `tools.py`, `ha/mcp.py` | Voice tool registry (cached, sorted, deny-list) over Home Assistant's MCP server; a minimal MCP client |
+| `cost.py`, `budget.py` | Token usage, cost estimates per model, monthly spending cap |
+| `smoke.py` | Manual checks against the real services (`tools`, `ask`) |
 | `store.py` | SQLite: interactions, retention, the north-star metric (`fallbacks_per_day`) |
 | `prompts/`, `i18n.py` | Built-in voice prompts and messages (en default, pt-BR) |
 | `ha/ws.py`, `ha/entities.py` | Home Assistant websocket client; entities exposed to Assist with their aliases |
@@ -73,7 +76,7 @@ Assistant's `notify` instead of Telegram). Not ported: the Claude CLI process ma
 | | Scope | Exit criterion |
 |---|---|---|
 | M0 | Skeleton, tests, CI | Tests and lint green; repo private |
-| M1 | Anthropic backend, Home Assistant tools, per-request prompts, cost meter | A second pipeline in the author's Home Assistant answers real fallbacks end to end; latency and cost measured; small vs larger model compared on real phrases |
+| M1 | Anthropic backend, Home Assistant tools, per-request prompts, cost meter, budget cap | A second pipeline in the author's Home Assistant answers real fallbacks end to end; latency and cost measured; small vs larger model compared on real phrases |
 | M2 | App packaging, minimal UI, options | Runs as an app on a small host (the author's mini PC) within its memory budget |
 | M3 | Scheduled analysis, suggestion lifecycle, metric dashboard | Fallbacks per day trend down on the author's own usage |
 | M4 | Policy layer | No sensitive domain reachable; per-command tool control |

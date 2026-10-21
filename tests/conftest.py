@@ -2,6 +2,7 @@ import httpx
 import pytest
 
 from voice_assist_improver.backends import EchoBackend
+from voice_assist_improver.budget import Budget
 from voice_assist_improver.config import Settings
 from voice_assist_improver.ollama_api import create_app
 from voice_assist_improver.store import Store
@@ -21,7 +22,8 @@ def make_client(settings):
         s = Settings(**{**settings.__dict__, **overrides})
         store = Store(s.data_dir / "test.sqlite3")
         stores.append(store)
-        app = create_app(s, backend or EchoBackend(), store)
+        budget = Budget(store, s.monthly_budget_usd, s.timezone) if s.monthly_budget_usd else None
+        app = create_app(s, backend or EchoBackend(), store, budget)
         transport = httpx.ASGITransport(app=app, client=(client_ip, 5555))
         return httpx.AsyncClient(transport=transport, base_url="http://app"), store
 

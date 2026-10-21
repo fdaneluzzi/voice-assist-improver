@@ -28,10 +28,21 @@ CREATE TABLE IF NOT EXISTS interactions (
     tools         TEXT,
     latency_ms    INTEGER,
     first_text_ms INTEGER,
-    error         TEXT
+    error         TEXT,
+    input_tokens  INTEGER,
+    output_tokens INTEGER,
+    cache_read_tokens  INTEGER,
+    cache_write_tokens INTEGER,
+    cost_usd      REAL
 );
 CREATE INDEX IF NOT EXISTS idx_interactions_ts ON interactions(ts);
 """
+
+# Columns added after the first version; added to databases created earlier.
+MIGRATIONS = {
+    "input_tokens": "INTEGER", "output_tokens": "INTEGER", "cache_read_tokens": "INTEGER",
+    "cache_write_tokens": "INTEGER", "cost_usd": "REAL",
+}
 
 
 class Store:
@@ -42,6 +53,11 @@ class Store:
         self._lock = threading.Lock()
         with self._lock:
             self._db.executescript(SCHEMA)
+            existing = {row["name"] for row in self._db.execute("PRAGMA table_info(interactions)")}
+            for column, kind in MIGRATIONS.items():
+                if column not in existing:
+                    self._db.execute(f"ALTER TABLE interactions ADD COLUMN {column} {kind}")
+            self._db.commit()
 
     def close(self) -> None:
         with self._lock:
@@ -60,13 +76,18 @@ class Store:
         first_text_ms: int | None = None,
         error: str | None = None,
         ts: float | None = None,
+        usage: dict | None = None,
     ) -> int:
+        usage = usage or {}
         with self._lock:
             cur = self._db.execute(
                 "INSERT INTO interactions (ts, client, model, backend, utterance, reply, tools,"
-                " latency_ms, first_text_ms, error) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                " latency_ms, first_text_ms, error, input_tokens, output_tokens, cache_read_tokens,"
+                " cache_write_tokens, cost_usd) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (ts if ts is not None else time.time(), client, model, backend, utterance, reply,
-                 json.dumps(tools or [], ensure_ascii=False), latency_ms, first_text_ms, error),
+                 json.dumps(tools or [], ensure_ascii=False), latency_ms, first_text_ms, error,
+                 usage.get("input_tokens"), usage.get("output_tokens"), usage.get("cache_read_tokens"),
+                 usage.get("cache_write_tokens"), usage.get("cost_usd")),
             )
             self._db.commit()
             return int(cur.lastrowid)
@@ -81,6 +102,20 @@ class Store:
             d["tools"] = json.loads(d["tools"] or "[]")
             out.append(d)
         return out
+
+    def cost_since(self, since_ts: float) -> float:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT COALESCE(SUM(cost_usd), 0) AS total FROM interactions WHERE ts >= ?", (since_ts,)
+            ).fetchone()
+        return float(row["total"])
+
+    def month_cost(self, timezone: str = "UTC", now: float | None = None) -> float:
+        """Estimated spend since the start of the current calendar month (in the given timezone)."""
+        tz = ZoneInfo(timezone)
+        moment = datetime.fromtimestamp(now if now is not None else time.time(), tz)
+        start = moment.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return self.cost_since(start.timestamp())
 
     def purge_older_than(self, days: int, now: float | None = None) -> int:
         cutoff = (now if now is not None else time.time()) - days * 86400

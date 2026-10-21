@@ -7,10 +7,16 @@ MESSAGES: dict[str, dict[str, str]] = {
     "en": {
         "backend_error": "Sorry, I couldn't reach the AI service right now.",
         "bad_request": "Sorry, I didn't catch that.",
+        "refusal": "Sorry, I can't help with that one.",
+        "budget_reached": "The monthly AI budget has been reached, so I can't use the AI service right now.",
+        "too_many_steps": "Sorry, that took too many steps and I gave up.",
     },
     "pt-BR": {
         "backend_error": "Desculpe, não consegui falar com o serviço de IA agora.",
         "bad_request": "Desculpe, não entendi.",
+        "refusal": "Desculpe, não posso ajudar com isso.",
+        "budget_reached": "O orçamento mensal de IA foi atingido; não posso usar o serviço de IA agora.",
+        "too_many_steps": "Desculpe, isso exigiu passos demais e eu desisti.",
     },
 }
 

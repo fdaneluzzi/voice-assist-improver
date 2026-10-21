@@ -5,6 +5,7 @@ import logging
 import uvicorn
 
 from .backends import create_backend
+from .budget import Budget
 from .config import Settings
 from .ollama_api import create_app
 from .store import Store
@@ -22,7 +23,8 @@ def main() -> None:
     settings = Settings.load()
     store = Store(settings.data_dir / "voice-assist-improver.sqlite3")
     store.purge_older_than(settings.retention_days)
-    app = create_app(settings, create_backend(settings), store)
+    budget = Budget(store, settings.monthly_budget_usd, settings.timezone)
+    app = create_app(settings, create_backend(settings), store, budget)
     uvicorn.run(app, host=settings.host, port=settings.port, log_level="info")
 
 
