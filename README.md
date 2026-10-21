@@ -2,8 +2,9 @@
 
 **Makes Home Assistant's Assist need an LLM less and less.**
 
-> Status: **pre-alpha (milestone M1)**. The Anthropic backend and the Home Assistant tool loop are implemented and
-> tested with a simulated model; they have not yet been run against the real Anthropic API. Not affiliated with Home Assistant, Nabu Casa or any AI vendor.
+> Status: **pre-alpha**. Runs end to end against the real Anthropic API and a real Home Assistant (voice
+> fallback, panel, daily analysis with alias suggestions). Packaged as a Home Assistant app for internal
+> testing; not published yet. Not affiliated with Home Assistant, Nabu Casa or any AI vendor.
 
 ## The idea
 
@@ -47,9 +48,9 @@ Home Assistant (Assist, "Ollama" agent) ──► Voice Assist Improver ──�
 | | Milestone | State |
 |---|---|---|
 | M0 | Skeleton: Ollama-compatible API, recording, storage, prompts (en / pt-BR), alias safety logic, CI | done |
-| M1 | Anthropic API backend: tool loop, Home Assistant tools, per-request prompts, cost meter, budget cap | code done and tested; live test needs an API key |
-| M2 | Home Assistant app packaging, minimal web UI, options | |
-| M3 | Suggestion engine: scheduled analysis, lifecycle (done / dismiss / never again), metric dashboard | |
+| M1 | Anthropic API backend: tool loop, Home Assistant tools, per-request prompts, cost meter, budget cap | done, validated live |
+| M2 | Home Assistant app packaging, web panel (ingress), options | done; first install on a real Home Assistant in progress |
+| M3 | Suggestion engine: scheduled analysis, lifecycle (done / dismiss / never again), metric dashboard | alias suggestions done; automations and scenes next |
 | M4 | Policy layer: tools per command, sensitive-domain audit | |
 | M5 | "Do it for me": plan, confirm, execute, undo | |
 | M6 | Optional subscription (OAuth) backend, unsupported and at your own risk | |
@@ -57,7 +58,14 @@ Home Assistant (Assist, "Ollama" agent) ──► Voice Assist Improver ──�
 
 Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Try it (needs an Anthropic API key)
+## Install as a Home Assistant app
+
+The repository is a Home Assistant app repository (`repository.yaml`, folder `voice_assist_improver/`). Add its
+URL under Settings → Apps → App store → ⋮ → Repositories, or copy the folder to `/addons` for a local install.
+Then follow `voice_assist_improver/DOCS.md`. The app source inside that folder is a generated copy: run
+`python scripts/sync_addon.py` after changing anything under `src/` (CI checks it).
+
+## Try it from a checkout (needs an Anthropic API key)
 
 ```bash
 .venv/bin/python -m voice_assist_improver.smoke tools            # Home Assistant tools (no API key needed)
