@@ -19,3 +19,4 @@ jobs:
       - run: pip install -e '.[dev]'
       - run: ruff check .
       - run: pytest -q
+      - run: python scripts/sync_addon.py --check

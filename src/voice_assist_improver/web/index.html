@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice Assist Improver</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #667085; --line: #e3e6ec;
+  --accent: #2563eb; --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --bar: #93b4f5; --bar2: #f59e0b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151b; --card: #1b2029; --text: #e7eaf0; --muted: #9aa4b5; --line: #2b3240;
+    --accent: #6ea0ff; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --bar: #3b5fa8; --bar2: #c98a12;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 980px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+.sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.card, section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+section { margin-bottom: 14px; }
+.big { font-size: 26px; font-weight: 650; }
+.label { color: var(--muted); font-size: 12px; }
+.banner { border: 1px solid var(--warn); color: var(--warn); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
+.chart { display: flex; align-items: flex-end; gap: 6px; height: 120px; padding-top: 6px; }
+.col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; min-width: 0; height: 100%; }
+.stack { width: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
+.stack div { width: 100%; }
+.n { font-size: 11px; color: var(--muted); }
+.legend { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 8px; vertical-align: -1px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; }
+.scroll { overflow-x: auto; }
+.sug { border-top: 1px solid var(--line); padding: 10px 0; }
+.sug:first-of-type { border-top: 0; }
+.sug .t { font-weight: 600; }
+.sug .d { color: var(--muted); font-size: 13px; margin: 2px 0 6px; }
+.tag { font-size: 11px; border: 1px solid var(--line); border-radius: 99px; padding: 1px 8px; color: var(--muted); margin-right: 6px; }
+button { font: inherit; font-size: 13px; padding: 5px 11px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text); cursor: pointer; margin: 4px 6px 0 0; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+.err { color: var(--bad); } .ok { color: var(--ok); }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Voice Assist Improver</h1>
+  <div class="sub" id="sub"></div>
+  <div id="banner"></div>
+  <div class="cards" id="cards"></div>
+
+  <section>
+    <h2 id="h-daily"></h2>
+    <div class="chart" id="chart"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section>
+    <div class="row"><h2 id="h-sug"></h2>
+      <div><span class="muted" id="analysis-info"></span>
+        <button id="analyze"></button></div></div>
+    <div id="sugs"></div>
+  </section>
+
+  <section>
+    <h2 id="h-top"></h2>
+    <div class="scroll"><table id="top"></table></div>
+  </section>
+
+  <section>
+    <h2 id="h-recent"></h2>
+    <div class="scroll"><table id="recent"></table></div>
+  </section>
+</main>
+
+<script>
+const STR = {
+  en: {
+    sub: (s) => `Model ${s.model} · language ${s.language}`,
+    notConfigured: "Not configured yet: add your API key in the app options (Settings → Apps → Voice Assist Improver → Configuration), then restart the app.",
+    today: "LLM fallbacks today", repeated: "Of those, repeated phrases", month: "Spend this month",
+    budget: (b) => b > 0 ? `of $${b.toFixed(2)} cap` : "no cap set", todayCost: "Spend today",
+    daily: "Requests that needed the LLM, per day", new_: "new phrase", rep: "repeated phrase",
+    noData: "No data yet. Phrases that Assist cannot handle will show up here.",
+    sug: "Suggestions", noSug: "No suggestions yet. The analysis runs daily; you can run it now.",
+    analyze: "Analyze now", analyzing: "Analyzing…", lastRun: (r) => r ? `Last run: ${r}` : "Never run",
+    evidence: (n) => `said ${n}×`, alias: "alias", tip: "tip",
+    apply: "Do it for me", applyConfirm: (a, e) => `Add the alias "${a}" to ${e}? The original name keeps working, and you can undo it.`,
+    undoConfirm: (a, e) => `Remove the alias "${a}" from ${e}?`,
+    done: "Mark as done", verify: "Check it was done", dismiss: "Dismiss", never: "Never again", undo: "Undo",
+    verified: "verified", doneTag: "done", dismissed: "dismissed", neverTag: "blocked",
+    top: "Most repeated phrases (14 days)", phrase: "Phrase", times: "Times",
+    recent: "Latest requests", when: "When", said: "Said", reply: "Reply", tools: "Tools", time: "Time", cost: "Cost",
+    failed: "failed", show: "Show",
+  },
+  "pt-BR": {
+    sub: (s) => `Modelo ${s.model} · idioma ${s.language}`,
+    notConfigured: "Ainda não configurado: coloque sua chave de API nas opções do app (Configurações → Apps → Voice Assist Improver → Configuração) e reinicie o app.",
+    today: "Chamadas à IA hoje", repeated: "Dessas, frases repetidas", month: "Gasto no mês",
+    budget: (b) => b > 0 ? `de um teto de US$ ${b.toFixed(2)}` : "sem teto definido", todayCost: "Gasto hoje",
+    daily: "Pedidos que precisaram da IA, por dia", new_: "frase nova", rep: "frase repetida",
+    noData: "Ainda sem dados. As frases que o Assist não entender vão aparecer aqui.",
+    sug: "Sugestões", noSug: "Ainda sem sugestões. A análise roda todo dia; você pode rodar agora.",
+    analyze: "Analisar agora", analyzing: "Analisando…", lastRun: (r) => r ? `Última análise: ${r}` : "Nunca rodou",
+    evidence: (n) => `dita ${n}×`, alias: "apelido", tip: "dica",
+    apply: "Faça por mim", applyConfirm: (a, e) => `Adicionar o apelido "${a}" em ${e}? O nome original continua funcionando e dá para desfazer.`,
+    undoConfirm: (a, e) => `Remover o apelido "${a}" de ${e}?`,
+    done: "Marcar como feito", verify: "Conferir se foi feito", dismiss: "Dispensar", never: "Nunca mais", undo: "Desfazer",
+    verified: "verificado", doneTag: "feito", dismissed: "dispensada", neverTag: "bloqueada",
+    top: "Frases mais repetidas (14 dias)", phrase: "Frase", times: "Vezes",
+    recent: "Últimos pedidos", when: "Quando", said: "Disse", reply: "Resposta", tools: "Ferramentas", time: "Tempo", cost: "Custo",
+    failed: "falhou", show: "Mostrar",
+  },
+};
+let T = STR.en, lang = "en", polling = null;
+
+const $ = (id) => document.getElementById(id);
+function el(tag, props = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (v !== null && v !== undefined) e.setAttribute(k, v);
+  }
+  for (const kid of kids) e.append(kid instanceof Node ? kid : document.createTextNode(kid ?? ""));
+  return e;
+}
+const money = (v) => "$" + (v || 0).toFixed(v && v < 0.1 ? 4 : 2);
+const when = (ts) => new Date(ts * 1000).toLocaleString(lang === "pt-BR" ? "pt-BR" : undefined,
+  { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+async function api(path, method = "GET") {
+  const res = await fetch("api/" + path, { method });
+  let data = {}; try { data = await res.json(); } catch (_) {}
+  if (!res.ok) throw new Error(data.detail || res.statusText);
+  return data;
+}
+
+function renderCards(sum) {
+  const s = sum.status, box = $("cards"); box.replaceChildren();
+  const card = (big, label, extra) => box.append(el("div", { class: "card" },
+    el("div", { class: "big" }, big), el("div", { class: "label" }, label), extra ? el("div", { class: "label" }, extra) : ""));
+  card(sum.today.fallbacks, T.today);
+  card(sum.today.repeated, T.repeated);
+  card(money(sum.today.cost_usd), T.todayCost);
+  card(money(s.month_cost), T.month, T.budget(s.budget));
+}
+
+function renderChart(daily) {
+  const box = $("chart"); box.replaceChildren();
+  if (!daily.length) { box.append(el("div", { class: "muted" }, T.noData)); $("legend").replaceChildren(); return; }
+  const max = Math.max(...daily.map((d) => d.total), 1);
+  for (const d of daily) {
+    const fresh = d.total - d.repeated;
+    box.append(el("div", { class: "col", title: `${d.day}: ${d.total}` },
+      el("div", { class: "n" }, d.total),
+      el("div", { class: "stack", style: `height:${Math.round((d.total / max) * 88)}px` },
+        el("div", { style: `background:var(--bar2);height:${(d.repeated / d.total) * 100}%` }),
+        el("div", { style: `background:var(--bar);height:${(fresh / d.total) * 100}%` })),
+      el("div", { class: "n" }, d.day.slice(5))));
+  }
+  $("legend").replaceChildren(el("span", { class: "sw", style: "background:var(--bar)" }), T.new_,
+    el("span", { class: "sw", style: "background:var(--bar2)" }), T.rep);
+}
+
+async function act(path, confirmText) {
+  if (confirmText && !confirm(confirmText)) return;
+  try { await api(path, "POST"); } catch (e) { alert(e.message); }
+  await refresh();
+}
+
+function renderSuggestions(list, analysis) {
+  const box = $("sugs"); box.replaceChildren();
+  const info = analysis.last ? (analysis.last.error ? `${T.failed}: ${analysis.last.error}` : when(analysis.last.ts)) : "";
+  $("analysis-info").textContent = T.lastRun(info) + " ";
+  const btn = $("analyze");
+  btn.disabled = analysis.running || !analysis.available;
+  btn.textContent = analysis.running ? T.analyzing : T.analyze;
+  const visible = list.filter((s) => s.status === "new" || s.status === "done");
+  if (!visible.length) { box.append(el("div", { class: "muted" }, T.noSug)); return; }
+  for (const s of visible) {
+    const tags = el("div", {},
+      el("span", { class: "tag" }, s.kind === "alias" ? T.alias : T.tip),
+      el("span", { class: "tag" }, T.evidence(s.evidence)),
+      s.status === "done" ? el("span", { class: "tag ok" }, T.doneTag + (s.verified ? " · " + T.verified : "")) : "");
+    const buttons = el("div", {});
+    const isAlias = s.kind === "alias";
+    if (s.status === "new") {
+      if (isAlias) buttons.append(
+        el("button", { class: "primary", onclick: () => act(`suggestions/${s.id}/apply`, T.applyConfirm(s.alias, s.entity_id)) }, T.apply),
+        el("button", { onclick: () => act(`suggestions/${s.id}/verify`) }, T.verify));
+      else buttons.append(el("button", { onclick: () => setStatus(s.id, "done") }, T.done));
+      buttons.append(el("button", { onclick: () => setStatus(s.id, "dismissed") }, T.dismiss),
+        el("button", { onclick: () => setStatus(s.id, "never") }, T.never));
+    } else if (isAlias) {
+      buttons.append(el("button", { onclick: () => act(`suggestions/${s.id}/undo`, T.undoConfirm(s.alias, s.entity_id)) }, T.undo));
+    }
+    box.append(el("div", { class: "sug" }, tags, el("div", { class: "t" }, s.title),
+      el("div", { class: "d" }, s.detail || (isAlias ? `${s.alias} → ${s.entity_id}` : "")),
+      el("div", { class: "d" }, `“${s.phrase}”`), buttons));
+  }
+}
+
+async function setStatus(id, status) {
+  try {
+    await fetch(`api/suggestions/${id}/status`, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status }) });
+  } catch (e) { alert(e.message); }
+  await refresh();
+}
+
+function renderTables(sum) {
+  const top = $("top"); top.replaceChildren(el("tr", {}, el("th", {}, T.phrase), el("th", {}, T.times)));
+  for (const p of sum.top_phrases) top.append(el("tr", {}, el("td", {}, p.phrase), el("td", {}, p.count)));
+  const rec = $("recent");
+  rec.replaceChildren(el("tr", {}, ...[T.when, T.said, T.reply, T.tools, T.time, T.cost].map((h) => el("th", {}, h))));
+  for (const r of sum.recent) rec.append(el("tr", {},
+    el("td", {}, when(r.ts)), el("td", {}, r.utterance),
+    el("td", { class: r.error ? "err" : "" }, r.error ? `${T.failed}: ${r.error}` : r.reply),
+    el("td", {}, r.tools.join(", ")),
+    el("td", {}, r.latency_ms ? (r.latency_ms / 1000).toFixed(1) + " s" : ""),
+    el("td", {}, money(r.cost_usd))));
+}
+
+async function refresh() {
+  let sum, sugs;
+  try { [sum, sugs] = await Promise.all([api("summary"), api("suggestions")]); }
+  catch (e) { $("banner").replaceChildren(el("div", { class: "banner" }, e.message)); return; }
+  lang = sum.status.language === "pt-BR" ? "pt-BR" : "en"; T = STR[lang];
+  document.documentElement.lang = lang;
+  $("h-daily").textContent = T.daily; $("h-sug").textContent = T.sug;
+  $("h-top").textContent = T.top; $("h-recent").textContent = T.recent;
+  $("sub").textContent = T.sub(sum.status);
+  $("banner").replaceChildren(sum.status.configured ? "" : el("div", { class: "banner" }, T.notConfigured));
+  renderCards(sum); renderChart(sum.daily); renderSuggestions(sugs.suggestions, sum.analysis); renderTables(sum);
+  // while an analysis runs, poll faster so the result shows up without a manual reload
+  clearTimeout(polling);
+  polling = setTimeout(refresh, sum.analysis.running ? 3000 : 30000);
+}
+
+$("analyze").addEventListener("click", async () => {
+  try { await api("analyze", "POST"); } catch (e) { alert(e.message); }
+  await refresh();
+});
+refresh();
+</script>
+</body>
+</html>

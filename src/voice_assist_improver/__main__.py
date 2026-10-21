@@ -4,7 +4,9 @@ import logging
 
 import uvicorn
 
-from .backends import create_backend
+from .analysis import Analyzer
+from .backends import Backend, create_backend
+from .backends.unconfigured import UnconfiguredBackend
 from .budget import Budget
 from .config import Settings
 from .ollama_api import create_app
@@ -18,13 +20,26 @@ def configure_logging() -> None:
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
+def build_backend(settings: Settings) -> Backend:
+    """The configured backend, or a stand-in that explains what is missing (so the app still starts and the
+    UI can show the problem instead of the app crash-looping)."""
+    try:
+        return create_backend(settings)
+    except ValueError as exc:
+        logging.getLogger(__name__).error("not configured: %s", exc)
+        return UnconfiguredBackend(settings, str(exc))
+
+
 def main() -> None:
     configure_logging()
     settings = Settings.load()
     store = Store(settings.data_dir / "voice-assist-improver.sqlite3")
     store.purge_older_than(settings.retention_days)
     budget = Budget(store, settings.monthly_budget_usd, settings.timezone)
-    app = create_app(settings, create_backend(settings), store, budget)
+    backend = build_backend(settings)
+    client = getattr(backend, "client", None)  # only the Anthropic backend can run the analysis
+    analyzer = Analyzer(settings, store, client, budget) if client is not None else None
+    app = create_app(settings, backend, store, budget, analyzer)
     uvicorn.run(app, host=settings.host, port=settings.port, log_level="info")
 
 

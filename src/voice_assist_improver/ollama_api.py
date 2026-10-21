@@ -5,6 +5,7 @@ could not handle the phrase locally. Each one is answered by the backend and rec
 """
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
 import logging
@@ -16,11 +17,13 @@ from datetime import UTC, datetime
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
+from .analysis import Analyzer
 from .backends import Backend, ChatRequest, Done, TextDelta, ToolCall, ToolResult
 from .budget import Budget
 from .config import Settings
 from .i18n import t
 from .store import Store
+from .ui import build_router
 
 log = logging.getLogger(__name__)
 
@@ -32,12 +35,17 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def create_app(settings: Settings, backend: Backend, store: Store, budget: Budget | None = None) -> FastAPI:
+def create_app(settings: Settings, backend: Backend, store: Store, budget: Budget | None = None,
+               analyzer: Analyzer | None = None) -> FastAPI:
     networks = [ipaddress.ip_network(n, strict=False) for n in settings.allowed_networks]
+    ui_networks = [ipaddress.ip_network(n, strict=False) for n in settings.ui_networks]
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        schedule = asyncio.create_task(analyzer.loop()) if analyzer and settings.analysis_hour >= 0 else None
         yield
+        if schedule:
+            schedule.cancel()
         await backend.close()
 
     app = FastAPI(title="voice-assist-improver", lifespan=lifespan)
@@ -45,15 +53,19 @@ def create_app(settings: Settings, backend: Backend, store: Store, budget: Budge
     @app.middleware("http")
     async def network_filter(request: Request, call_next):
         host = request.client.host if request.client else ""
+        # The UI has its own, stricter allow-list (in Home Assistant: only the ingress gateway).
+        scope = ui_networks if request.url.path.startswith("/ui") else networks
         try:
             ip = ipaddress.ip_address(host)
-            allowed = any(ip in n for n in networks)
+            allowed = any(ip in n for n in scope)
         except ValueError:
             allowed = False
         if not allowed:
             log.warning("request denied for %s", host or "?")
             return JSONResponse({"error": "forbidden"}, status_code=403)
         return await call_next(request)
+
+    app.include_router(build_router(settings, store, backend, analyzer))
 
     def resolve_model(name: str | None) -> str | None:
         base = (name or settings.models[0]).split(":")[0]

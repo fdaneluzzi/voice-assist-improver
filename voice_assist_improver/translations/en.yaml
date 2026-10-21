@@ -1,0 +1,34 @@
+configuration:
+  anthropic_api_key:
+    name: Anthropic API key
+    description: Create it in the Anthropic Console, preferably inside its own workspace with a low spend limit.
+  anthropic_workspace_id:
+    name: Anthropic workspace ID
+    description: Only needed if your API key is not tied to a workspace.
+  language:
+    name: Language
+    description: Language of the built-in voice prompt, spoken messages and the panel.
+  model:
+    name: Voice model
+    description: Answers the requests Assist could not handle. Haiku is the cheapest; Sonnet is more careful.
+  analysis_model:
+    name: Analysis model
+    description: Used once a day to suggest improvements.
+  monthly_budget_usd:
+    name: Monthly spending cap (USD)
+    description: When the estimated spend reaches it, the AI service stops being called. 0 disables the cap.
+  web_search:
+    name: Web search
+    description: Lets the model search the web. Off by default.
+  voice_tool_denylist:
+    name: Blocked tools
+    description: Voice tools that must never be offered to the model. Patterns like light__* are allowed.
+  retention_days:
+    name: Days to keep requests
+    description: Older recorded requests are deleted.
+  analysis_hour:
+    name: Daily analysis hour
+    description: Local hour (0-23) of the daily analysis. -1 turns the schedule off.
+  voice_token:
+    name: Home Assistant token for voice (optional)
+    description: A long-lived token of a non-admin user. If empty, the app uses its own access.

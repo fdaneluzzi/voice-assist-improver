@@ -10,6 +10,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "refusal": "Sorry, I can't help with that one.",
         "budget_reached": "The monthly AI budget has been reached, so I can't use the AI service right now.",
         "too_many_steps": "Sorry, that took too many steps and I gave up.",
+        "not_configured": "Voice Assist Improver is not set up yet. Add your API key in the app settings.",
     },
     "pt-BR": {
         "backend_error": "Desculpe, não consegui falar com o serviço de IA agora.",
@@ -17,6 +18,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "refusal": "Desculpe, não posso ajudar com isso.",
         "budget_reached": "O orçamento mensal de IA foi atingido; não posso usar o serviço de IA agora.",
         "too_many_steps": "Desculpe, isso exigiu passos demais e eu desisti.",
+        "not_configured": "O Voice Assist Improver ainda não foi configurado. "
+                          "Coloque sua chave de API nas opções do app.",
     },
 }
 

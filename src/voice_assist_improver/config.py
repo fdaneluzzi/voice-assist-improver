@@ -1,6 +1,7 @@
 """Configuration from VAI_* environment variables (and an optional .env file)."""
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -8,6 +9,13 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 PREFIX = "VAI_"
+OPTIONS_FILE = "/data/options.json"  # where the Home Assistant Supervisor writes an app's options
+# Defaults when running as a Home Assistant app: the Supervisor proxy reaches Core, and only the app network
+# (Core, the ingress gateway) may call us.
+ADDON_HA_URL = "http://supervisor/core"
+ADDON_NETWORKS = ("172.30.32.0/23", "127.0.0.0/8")
+ADDON_UI_NETWORKS = ("172.30.32.2/32", "127.0.0.0/8")  # the ingress gateway
+ADDON_CONFIG_DIR = "/config"
 
 
 def _csv(value: str) -> tuple[str, ...]:
@@ -16,6 +24,48 @@ def _csv(value: str) -> tuple[str, ...]:
 
 def _bool(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _addon_defaults(env: dict[str, str]) -> dict[str, str]:
+    config_dir = Path(ADDON_CONFIG_DIR)
+    prompt = config_dir / "voice_prompt.md"
+    defaults = {
+        PREFIX + "HA_URL": ADDON_HA_URL,
+        PREFIX + "HA_TOKEN": env["SUPERVISOR_TOKEN"],
+        PREFIX + "BACKEND": "anthropic",
+        PREFIX + "HOST": "0.0.0.0",
+        PREFIX + "ALLOWED_NETWORKS": ",".join(ADDON_NETWORKS),
+        PREFIX + "UI_NETWORKS": ",".join(ADDON_UI_NETWORKS),
+        PREFIX + "DATA_DIR": "/data",
+        PREFIX + "MODELS": "default,claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5",
+    }
+    if env.get("TZ"):
+        defaults[PREFIX + "TIMEZONE"] = env["TZ"]
+    if prompt.is_file():
+        defaults[PREFIX + "CUSTOM_VOICE_PROMPT_FILE"] = str(prompt)
+    return defaults
+
+
+# App option name -> setting name, where they differ. Everything else maps to VAI_<OPTION NAME UPPERCASE>.
+_OPTION_ALIASES = {"voice_token": "HA_MCP_TOKEN"}
+
+
+def _read_options(path: str) -> dict[str, str]:
+    """Options written by the Supervisor, as VAI_* strings. Empty values are ignored (use the default)."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, str] = {}
+    for key, value in data.items():
+        if value is None or value == "" or value == []:
+            continue
+        if isinstance(value, bool):
+            value = "true" if value else "false"
+        elif isinstance(value, list):
+            value = ",".join(str(v) for v in value)
+        out[PREFIX + _OPTION_ALIASES.get(key, key.upper())] = str(value)
+    return out
 
 
 @dataclass(frozen=True)
@@ -41,6 +91,12 @@ class Settings:
     timezone: str = "UTC"
     request_timeout: float = 90.0
 
+    # The web UI (and its JSON API) is more sensitive than the Ollama endpoint, so it has its own allow-list.
+    ui_networks: tuple[str, ...] = ("127.0.0.0/8", "::1/128")
+    # Local hour (0-23) of the daily analysis; -1 disables the schedule (it can still be run by hand).
+    analysis_hour: int = 4
+    analysis_days: int = 7
+
     # --- Anthropic backend ---
     anthropic_api_key: str = field(default="", repr=False)
     # Needed only for API keys that are not scoped to a workspace (the API then asks for this header).
@@ -62,9 +118,17 @@ class Settings:
     monthly_budget_usd: float = 0.0
 
     @classmethod
-    def load(cls, env_file: str = ".env", environ: dict[str, str] | None = None) -> Settings:
-        raw: dict[str, str] = {k: v for k, v in dotenv_values(env_file).items() if v is not None}
-        raw.update(os.environ if environ is None else environ)
+    def load(cls, env_file: str = ".env", environ: dict[str, str] | None = None,
+             options_file: str | None = None) -> Settings:
+        """Precedence, low to high: app defaults, .env, app options (/data/options.json), environment."""
+        env = dict(os.environ if environ is None else environ)
+        raw: dict[str, str] = {}
+        addon = bool(env.get("SUPERVISOR_TOKEN"))
+        if addon:
+            raw.update(_addon_defaults(env))
+        raw.update({k: v for k, v in dotenv_values(env_file).items() if v is not None})
+        raw.update(_read_options(options_file or env.get(PREFIX + "OPTIONS_FILE") or OPTIONS_FILE))
+        raw.update(env)
 
         def get(name: str, default: str) -> str:
             return raw.get(PREFIX + name, default)
@@ -77,6 +141,9 @@ class Settings:
             host=get("HOST", d.host),
             port=int(get("PORT", str(d.port))),
             allowed_networks=_csv(get("ALLOWED_NETWORKS", ",".join(d.allowed_networks))),
+            ui_networks=_csv(get("UI_NETWORKS", ",".join(d.ui_networks))),
+            analysis_hour=int(get("ANALYSIS_HOUR", str(d.analysis_hour))),
+            analysis_days=int(get("ANALYSIS_DAYS", str(d.analysis_days))),
             backend=get("BACKEND", d.backend),
             models=_csv(get("MODELS", ",".join(d.models))),
             language=get("LANGUAGE", d.language),
@@ -99,6 +166,10 @@ class Settings:
             tool_cache_seconds=int(get("TOOL_CACHE_SECONDS", str(d.tool_cache_seconds))),
             monthly_budget_usd=float(get("MONTHLY_BUDGET_USD", str(d.monthly_budget_usd))),
         )
+
+    @property
+    def is_addon(self) -> bool:
+        return self.ha_url.startswith(ADDON_HA_URL)
 
     @property
     def ha_mcp_url(self) -> str:

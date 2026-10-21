@@ -1,0 +1,41 @@
+name: Voice Assist Improver
+version: "0.1.0"
+slug: voice_assist_improver
+description: Makes Home Assistant's Assist need an LLM less and less
+url: https://github.com/fdaneluzzi/voice-assist-improver
+arch:
+  - aarch64
+  - amd64
+startup: application
+boot: auto
+homeassistant_api: true
+ingress: true
+ingress_port: 11435
+ingress_entry: ui/
+panel_icon: mdi:microphone-message
+panel_title: Voice Assist
+panel_admin: true
+options:
+  anthropic_api_key: ""
+  language: en
+  model: claude-haiku-5-5
+  analysis_model: claude-sonnet-5-5
+  monthly_budget_usd: 5
+  web_search: false
+  voice_tool_denylist: []
+  retention_days: 90
+  analysis_hour: 4
+  voice_token: ""
+schema:
+  anthropic_api_key: password
+  anthropic_workspace_id: str?
+  language: list(en|pt-BR)
+  model: list(claude-haiku-5-5|claude-sonnet-5-5|claude-opus-5-5)
+  analysis_model: list(claude-haiku-5-5|claude-sonnet-5-5|claude-opus-5-5)
+  monthly_budget_usd: float(0,)
+  web_search: bool
+  voice_tool_denylist:
+    - str
+  retention_days: int(1,3650)
+  analysis_hour: int(-1,23)
+  voice_token: password?
