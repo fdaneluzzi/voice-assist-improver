@@ -22,6 +22,7 @@ from .backends import Backend, ChatRequest, Done, TextDelta, ToolCall, ToolResul
 from .budget import Budget
 from .config import Settings
 from .i18n import t
+from .models import ModelCatalog
 from .store import Store
 from .ui import build_router
 
@@ -36,7 +37,7 @@ def _now() -> str:
 
 
 def create_app(settings: Settings, backend: Backend, store: Store, budget: Budget | None = None,
-               analyzer: Analyzer | None = None) -> FastAPI:
+               analyzer: Analyzer | None = None, catalog: ModelCatalog | None = None) -> FastAPI:
     networks = [ipaddress.ip_network(n, strict=False) for n in settings.allowed_networks]
     ui_networks = [ipaddress.ip_network(n, strict=False) for n in settings.ui_networks]
 
@@ -65,11 +66,12 @@ def create_app(settings: Settings, backend: Backend, store: Store, budget: Budge
             return JSONResponse({"error": "forbidden"}, status_code=403)
         return await call_next(request)
 
-    app.include_router(build_router(settings, store, backend, analyzer))
+    app.include_router(build_router(settings, store, backend, analyzer, catalog))
 
     def resolve_model(name: str | None) -> str | None:
         base = (name or settings.models[0]).split(":")[0]
-        return base if base in settings.models else None
+        # Any "claude-*" name is passed through, so new models work without an app update.
+        return base if base in settings.models or base.startswith("claude-") else None
 
     @app.get("/")
     async def root():
@@ -81,11 +83,16 @@ def create_app(settings: Settings, backend: Backend, store: Store, budget: Budge
 
     @app.get("/api/tags")
     async def tags():
+        names = list(settings.models)
+        if catalog is not None:
+            live = [m["id"] for m in await catalog.list()]
+            if live:
+                names = ["default", *live]
         return {"models": [
             {"name": f"{m}:latest", "model": f"{m}:latest", "modified_at": _now(), "size": 0, "digest": "",
              "details": {"format": "api", "family": "llm", "families": ["llm"],
                          "parameter_size": "", "quantization_level": ""}}
-            for m in settings.models
+            for m in names
         ]}
 
     @app.post("/api/show")

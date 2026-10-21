@@ -87,7 +87,7 @@ class Settings:
     # Optional file that replaces the built-in voice prompt.
     custom_voice_prompt_file: str = ""
     data_dir: Path = Path("data")
-    retention_days: int = 90
+    retention_days: int = 30
     timezone: str = "UTC"
     request_timeout: float = 90.0
 

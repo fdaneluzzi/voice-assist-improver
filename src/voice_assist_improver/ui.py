@@ -19,6 +19,7 @@ from .config import Settings
 from .ha.aliases import AliasError, apply_alias, remove_alias
 from .ha.entities import fetch_entities
 from .ha.ws import HAError
+from .models import ModelCatalog
 from .store import STATUSES, Store
 
 log = logging.getLogger(__name__)
@@ -35,7 +36,8 @@ def _public_suggestion(s: dict) -> dict:
                               "status", "verified", "updated")}
 
 
-def build_router(settings: Settings, store: Store, backend: Any, analyzer: Analyzer | None) -> APIRouter:
+def build_router(settings: Settings, store: Store, backend: Any, analyzer: Analyzer | None,
+                 catalog: ModelCatalog | None = None) -> APIRouter:
     router = APIRouter(prefix="/ui")
     tasks: set[asyncio.Task] = set()  # keep references so background runs are not garbage collected
 
@@ -48,6 +50,8 @@ def build_router(settings: Settings, store: Store, backend: Any, analyzer: Analy
         tz = settings.timezone
         configured = getattr(backend, "name", "") != "unconfigured"
         last = store.last_analysis_run()
+        models = await catalog.list() if catalog else []
+        missing = await catalog.missing(settings.model, settings.analysis_model) if catalog else []
         return {
             "status": {
                 "configured": configured, "reason": getattr(backend, "reason", ""),
@@ -56,6 +60,7 @@ def build_router(settings: Settings, store: Store, backend: Any, analyzer: Analy
                 "month_cost": store.month_cost(tz), "budget": settings.monthly_budget_usd,
                 "web_search": settings.web_search, "analysis_hour": settings.analysis_hour,
                 "analysis_days": settings.analysis_days,
+                "models": [m["id"] for m in models], "missing_models": missing,
             },
             "today": store.day_totals(tz),
             "daily": store.fallbacks_per_day(days=14, timezone=tz),

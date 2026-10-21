@@ -10,10 +10,10 @@ configuration:
     description: Idioma do prompt de voz embutido, das mensagens faladas e do painel.
   model:
     name: Modelo de voz
-    description: Responde aos pedidos que o Assist não entendeu. Haiku é o mais barato; Sonnet é mais cuidadoso.
+    description: Qualquer ID de modelo que sua chave de API possa usar (por exemplo claude-haiku-5-5). Responde aos pedidos que o Assist não entendeu; modelos menores são mais baratos e rápidos. O painel avisa se o ID não estiver disponível.
   analysis_model:
     name: Modelo da análise
-    description: Usado uma vez por dia para sugerir melhorias.
+    description: Qualquer ID de modelo que sua chave de API possa usar. Usado uma vez por dia para sugerir melhorias; um modelo mais capaz dá sugestões melhores.
   monthly_budget_usd:
     name: Teto de gasto mensal (USD)
     description: Quando o gasto estimado chega nele, o serviço de IA deixa de ser chamado. 0 desliga o teto.
@@ -25,10 +25,10 @@ configuration:
     description: Ferramentas de voz que nunca devem ser oferecidas ao modelo. Aceita padrões como light__*.
   retention_days:
     name: Dias para guardar os pedidos
-    description: Pedidos gravados mais antigos são apagados.
+    description: O que as pessoas dizem fica guardado localmente. Pedidos mais antigos que isso são apagados. A análise só precisa de cerca de uma semana.
   analysis_hour:
     name: Hora da análise diária
     description: Hora local (0-23) da análise diária. -1 desliga o agendamento.
   voice_token:
-    name: Token do Home Assistant para voz (opcional)
-    description: Token de longa duração de um usuário sem privilégio de administrador. Se vazio, o app usa o acesso próprio.
+    name: Token do Home Assistant para voz (avançado)
+    description: Opcional. Token de longa duração de um usuário sem administrador, para as ferramentas de voz rodarem com menos privilégios que o acesso próprio do app. Deixe de fora, a menos que queira isso.

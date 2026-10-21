@@ -271,3 +271,47 @@ async def test_delete_interaction_removes_it_from_history_and_analysis(tmp_path)
         assert (await client.get("/ui/api/summary")).json()["recent"] == []
     assert st.top_phrases() == []
     st.close()
+
+
+# ---------- model catalog ----------
+
+
+class FakeModels:
+    def __init__(self, ids, fail=False):
+        self.ids, self.fail, self.calls = ids, fail, 0
+
+    async def list(self, limit=100):
+        self.calls += 1
+        if self.fail:
+            raise RuntimeError("offline")
+        return types.SimpleNamespace(
+            data=[types.SimpleNamespace(id=i, display_name=i.upper()) for i in self.ids])
+
+
+async def test_catalog_caches_and_survives_failures():
+    from voice_assist_improver.models import ModelCatalog
+    fake = FakeModels(["claude-a", "claude-b"])
+    catalog = ModelCatalog(types.SimpleNamespace(models=fake))
+    assert [m["id"] for m in await catalog.list()] == ["claude-a", "claude-b"]
+    await catalog.list()
+    assert fake.calls == 1  # cached
+    assert await catalog.missing("claude-a", "claude-z") == ["claude-z"]
+    broken = ModelCatalog(types.SimpleNamespace(models=FakeModels([], fail=True)))
+    assert await broken.list() == [] and await broken.missing("claude-z") == []  # unknown: no false alarm
+
+
+async def test_tags_list_live_models_and_any_claude_name_is_accepted(tmp_path):
+    from voice_assist_improver.models import ModelCatalog
+    s = Settings(data_dir=tmp_path, model="claude-gone", analysis_model="claude-new-9")
+    st = Store(tmp_path / "m.sqlite3")
+    catalog = ModelCatalog(types.SimpleNamespace(models=FakeModels(["claude-new-9"])))
+    app = create_app(s, UnconfiguredBackend(s, ""), st, None, None, catalog)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 1)),
+                                 base_url="http://app") as client:
+        names = [m["name"] for m in (await client.get("/api/tags")).json()["models"]]
+        assert names == ["default:latest", "claude-new-9:latest"]
+        assert (await client.post("/api/show", json={"model": "claude-brand-new"})).status_code == 200
+        assert (await client.post("/api/show", json={"model": "gpt-4"})).status_code == 404
+        status = (await client.get("/ui/api/summary")).json()["status"]
+        assert status["missing_models"] == ["claude-gone"] and status["models"] == ["claude-new-9"]
+    st.close()

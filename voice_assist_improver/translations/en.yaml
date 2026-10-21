@@ -10,10 +10,10 @@ configuration:
     description: Language of the built-in voice prompt, spoken messages and the panel.
   model:
     name: Voice model
-    description: Answers the requests Assist could not handle. Haiku is the cheapest; Sonnet is more careful.
+    description: Any model ID your API key can use (for example claude-haiku-5-5). It answers the requests Assist could not handle; smaller models are cheaper and faster. The panel warns if the ID is not available.
   analysis_model:
     name: Analysis model
-    description: Used once a day to suggest improvements.
+    description: Any model ID your API key can use. Used once a day to suggest improvements; a more capable model gives better suggestions.
   monthly_budget_usd:
     name: Monthly spending cap (USD)
     description: When the estimated spend reaches it, the AI service stops being called. 0 disables the cap.
@@ -25,10 +25,10 @@ configuration:
     description: Voice tools that must never be offered to the model. Patterns like light__* are allowed.
   retention_days:
     name: Days to keep requests
-    description: Older recorded requests are deleted.
+    description: What people say is stored locally. Requests older than this are deleted. The analysis only needs about a week.
   analysis_hour:
     name: Daily analysis hour
     description: Local hour (0-23) of the daily analysis. -1 turns the schedule off.
   voice_token:
-    name: Home Assistant token for voice (optional)
-    description: A long-lived token of a non-admin user. If empty, the app uses its own access.
+    name: Home Assistant token for voice (advanced)
+    description: Optional. A long-lived token of a non-admin user, so voice tools run with fewer privileges than the app's own access. Leave it out unless you want that.

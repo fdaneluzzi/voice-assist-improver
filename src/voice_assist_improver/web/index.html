@@ -88,6 +88,7 @@ button:disabled { opacity: .5; cursor: default; }
 const STR = {
   en: {
     sub: (s) => `Model ${s.model} · language ${s.language}`,
+    missingModel: (m, all) => `The model "${m.join('", "')}" is not available to your API key. Models you can use: ${all.join(", ") || "(none listed)"}. Change it in the app options.`,
     notConfigured: "Not configured yet: add your API key in the app options (Settings → Apps → Voice Assist Improver → Configuration), then restart the app.",
     today: "LLM fallbacks today", repeated: "Of those, repeated phrases", month: "Spend this month",
     budget: (b) => b > 0 ? `of $${b.toFixed(2)} cap` : "no cap set", todayCost: "Spend today",
@@ -108,6 +109,7 @@ const STR = {
   },
   "pt-BR": {
     sub: (s) => `Modelo ${s.model} · idioma ${s.language}`,
+    missingModel: (m, all) => `O modelo "${m.join('", "')}" não está disponível para a sua chave de API. Modelos que você pode usar: ${all.join(", ") || "(nenhum listado)"}. Troque nas opções do app.`,
     notConfigured: "Ainda não configurado: coloque sua chave de API nas opções do app (Configurações → Apps → Voice Assist Improver → Configuração) e reinicie o app.",
     today: "Chamadas à IA hoje", repeated: "Dessas, frases repetidas", month: "Gasto no mês",
     budget: (b) => b > 0 ? `de um teto de US$ ${b.toFixed(2)}` : "sem teto definido", todayCost: "Gasto hoje",
@@ -253,7 +255,10 @@ async function refresh() {
   $("h-daily").textContent = T.daily; $("h-sug").textContent = T.sug;
   $("h-top").textContent = T.top; $("h-recent").textContent = T.recent;
   $("sub").textContent = T.sub(sum.status);
-  $("banner").replaceChildren(sum.status.configured ? "" : el("div", { class: "banner" }, T.notConfigured));
+  const problems = [];
+  if (!sum.status.configured) problems.push(T.notConfigured);
+  if (sum.status.missing_models.length) problems.push(T.missingModel(sum.status.missing_models, sum.status.models));
+  $("banner").replaceChildren(...problems.map((p) => el("div", { class: "banner" }, p)));
   renderCards(sum); renderChart(sum.daily); renderSuggestions(sugs.suggestions, sum.analysis); renderTables(sum);
   // while an analysis runs, poll faster so the result shows up without a manual reload
   clearTimeout(polling);

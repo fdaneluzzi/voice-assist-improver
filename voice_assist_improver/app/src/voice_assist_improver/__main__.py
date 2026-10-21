@@ -9,6 +9,7 @@ from .backends import Backend, create_backend
 from .backends.unconfigured import UnconfiguredBackend
 from .budget import Budget
 from .config import Settings
+from .models import ModelCatalog
 from .ollama_api import create_app
 from .store import Store
 
@@ -39,7 +40,8 @@ def main() -> None:
     backend = build_backend(settings)
     client = getattr(backend, "client", None)  # only the Anthropic backend can run the analysis
     analyzer = Analyzer(settings, store, client, budget) if client is not None else None
-    app = create_app(settings, backend, store, budget, analyzer)
+    catalog = ModelCatalog(client) if client is not None else None
+    app = create_app(settings, backend, store, budget, analyzer, catalog)
     uvicorn.run(app, host=settings.host, port=settings.port, log_level="info")
 
 
