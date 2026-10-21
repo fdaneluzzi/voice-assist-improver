@@ -2,16 +2,12 @@
 from __future__ import annotations
 
 from ..config import Settings
+from ..policy import BLOCKED_DEVICE_CLASSES, DEFAULT_POLICY, SAFE_DOMAINS, Policy  # noqa: F401
 from .ws import connect
 
-# Only these domains may ever receive aliases or be touched by suggestions. Locks, alarms, garage doors and
-# gates are deliberately absent: the improver never helps voice-control them.
-SAFE_DOMAINS = {"light", "switch", "climate", "cover", "fan", "valve", "media_player"}
-BLOCKED_DEVICE_CLASSES = {"gate", "garage", "garage_door", "door"}
 
-
-def is_safe(entity: dict) -> bool:
-    return entity["domain"] in SAFE_DOMAINS and entity.get("device_class") not in BLOCKED_DEVICE_CLASSES
+def is_safe(entity: dict, policy: Policy = DEFAULT_POLICY) -> bool:
+    return policy.allows(entity)
 
 
 async def fetch_entities(settings: Settings) -> list[dict]:

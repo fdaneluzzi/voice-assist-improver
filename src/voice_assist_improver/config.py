@@ -8,6 +8,8 @@ from pathlib import Path
 
 from dotenv import dotenv_values
 
+from .policy import BLOCKED_DEVICE_CLASSES, SAFE_DOMAINS, Policy
+
 PREFIX = "VAI_"
 OPTIONS_FILE = "/data/options.json"  # where the Home Assistant Supervisor writes an app's options
 # Defaults when running as a Home Assistant app: the Supervisor proxy reaches Core, and only the app network
@@ -97,6 +99,11 @@ class Settings:
     analysis_hour: int = 4
     analysis_days: int = 7
 
+    # What suggestions may touch. The defaults leave out locks, alarms, garage doors and gates on purpose;
+    # adding them is a deliberate choice of the user.
+    suggestion_domains: tuple[str, ...] = tuple(sorted(SAFE_DOMAINS))
+    blocked_device_classes: tuple[str, ...] = tuple(sorted(BLOCKED_DEVICE_CLASSES))
+
     # --- Anthropic backend ---
     anthropic_api_key: str = field(default="", repr=False)
     # Needed only for API keys that are not scoped to a workspace (the API then asks for this header).
@@ -142,6 +149,8 @@ class Settings:
             port=int(get("PORT", str(d.port))),
             allowed_networks=_csv(get("ALLOWED_NETWORKS", ",".join(d.allowed_networks))),
             ui_networks=_csv(get("UI_NETWORKS", ",".join(d.ui_networks))),
+            suggestion_domains=_csv(get("SUGGESTION_DOMAINS", ",".join(d.suggestion_domains))),
+            blocked_device_classes=_csv(get("BLOCKED_DEVICE_CLASSES", ",".join(d.blocked_device_classes))),
             analysis_hour=int(get("ANALYSIS_HOUR", str(d.analysis_hour))),
             analysis_days=int(get("ANALYSIS_DAYS", str(d.analysis_days))),
             backend=get("BACKEND", d.backend),
@@ -166,6 +175,10 @@ class Settings:
             tool_cache_seconds=int(get("TOOL_CACHE_SECONDS", str(d.tool_cache_seconds))),
             monthly_budget_usd=float(get("MONTHLY_BUDGET_USD", str(d.monthly_budget_usd))),
         )
+
+    @property
+    def policy(self) -> Policy:
+        return Policy(frozenset(self.suggestion_domains), frozenset(self.blocked_device_classes))
 
     @property
     def is_addon(self) -> bool:

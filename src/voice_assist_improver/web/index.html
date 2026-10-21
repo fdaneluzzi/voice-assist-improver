@@ -98,9 +98,11 @@ const STR = {
     analyze: "Analyze now", analyzing: "Analyzing…", lastRun: (r) => r ? `Last run: ${r}` : "Never run",
     runStats: (r) => `${r.interactions} phrases analyzed, ${r.created} new, ${r.rejected} rejected`,
     remove: "Delete", removeConfirm: "Delete this request from the history?",
-    evidence: (n) => `said ${n}×`, alias: "alias", tip: "tip",
+    evidence: (n) => `said ${n}×`, alias: "alias", tip: "tip", automation: "automation", scene: "scene",
+    whenYouSay: "When you say", willDo: "It will create",
+    planConfirm: (lines, sentences) => `Create this in Home Assistant?\n\nWhen you say: ${sentences.join(" / ")}\n${lines.map((l) => "• " + l).join("\n")}\n\nYou can undo it afterwards.`,
     apply: "Do it for me", applyConfirm: (a, e) => `Add the alias "${a}" to ${e}? The original name keeps working, and you can undo it.`,
-    undoConfirm: (a, e) => `Remove the alias "${a}" from ${e}?`,
+    undoConfirm: (what) => `Undo "${what}"? What was added or created is removed again.`,
     done: "Mark as done", verify: "Check it was done", dismiss: "Dismiss", never: "Never again", undo: "Undo",
     verified: "verified", doneTag: "done", dismissed: "dismissed", neverTag: "blocked",
     top: "Most repeated phrases (14 days)", phrase: "Phrase", times: "Times",
@@ -119,9 +121,11 @@ const STR = {
     analyze: "Analisar agora", analyzing: "Analisando…", lastRun: (r) => r ? `Última análise: ${r}` : "Nunca rodou",
     runStats: (r) => `${r.interactions} frases analisadas, ${r.created} novas, ${r.rejected} rejeitadas`,
     remove: "Apagar", removeConfirm: "Apagar este pedido do histórico?",
-    evidence: (n) => `dita ${n}×`, alias: "apelido", tip: "dica",
+    evidence: (n) => `dita ${n}×`, alias: "apelido", tip: "dica", automation: "automação", scene: "cena",
+    whenYouSay: "Quando você disser", willDo: "Vai criar",
+    planConfirm: (lines, sentences) => `Criar isto no Home Assistant?\n\nQuando você disser: ${sentences.join(" / ")}\n${lines.map((l) => "• " + l).join("\n")}\n\nDá para desfazer depois.`,
     apply: "Faça por mim", applyConfirm: (a, e) => `Adicionar o apelido "${a}" em ${e}? O nome original continua funcionando e dá para desfazer.`,
-    undoConfirm: (a, e) => `Remover o apelido "${a}" de ${e}?`,
+    undoConfirm: (what) => `Desfazer "${what}"? O que foi adicionado ou criado será removido.`,
     done: "Marcar como feito", verify: "Conferir se foi feito", dismiss: "Dispensar", never: "Nunca mais", undo: "Desfazer",
     verified: "verificado", doneTag: "feito", dismissed: "dispensada", neverTag: "bloqueada",
     top: "Frases mais repetidas (14 dias)", phrase: "Frase", times: "Vezes",
@@ -197,23 +201,26 @@ function renderSuggestions(list, analysis) {
   if (!visible.length) { box.append(el("div", { class: "muted" }, T.noSug)); return; }
   for (const s of visible) {
     const tags = el("div", {},
-      el("span", { class: "tag" }, s.kind === "alias" ? T.alias : T.tip),
+      el("span", { class: "tag" }, T[s.kind] || s.kind),
       el("span", { class: "tag" }, T.evidence(s.evidence)),
       s.status === "done" ? el("span", { class: "tag ok" }, T.doneTag + (s.verified ? " · " + T.verified : "")) : "");
     const buttons = el("div", {});
     const isAlias = s.kind === "alias";
+    const canApply = isAlias || s.kind === "automation" || s.kind === "scene";
+    const confirmText = isAlias ? T.applyConfirm(s.alias, s.entity_id) : T.planConfirm(s.plan, s.sentences);
     if (s.status === "new") {
-      if (isAlias) buttons.append(
-        el("button", { class: "primary", onclick: () => act(`suggestions/${s.id}/apply`, T.applyConfirm(s.alias, s.entity_id)) }, T.apply),
-        el("button", { onclick: () => act(`suggestions/${s.id}/verify`) }, T.verify));
-      else buttons.append(el("button", { onclick: () => setStatus(s.id, "done") }, T.done));
+      if (canApply) buttons.append(
+        el("button", { class: "primary", onclick: () => act(`suggestions/${s.id}/apply`, confirmText) }, T.apply));
+      if (isAlias) buttons.append(el("button", { onclick: () => act(`suggestions/${s.id}/verify`) }, T.verify));
+      if (!canApply) buttons.append(el("button", { onclick: () => setStatus(s.id, "done") }, T.done));
       buttons.append(el("button", { onclick: () => setStatus(s.id, "dismissed") }, T.dismiss),
         el("button", { onclick: () => setStatus(s.id, "never") }, T.never));
-    } else if (isAlias) {
-      buttons.append(el("button", { onclick: () => act(`suggestions/${s.id}/undo`, T.undoConfirm(s.alias, s.entity_id)) }, T.undo));
+    } else if (s.applied) {
+      buttons.append(el("button", { onclick: () => act(`suggestions/${s.id}/undo`, T.undoConfirm(s.alias || s.title)) }, T.undo));
     }
     box.append(el("div", { class: "sug" }, tags, el("div", { class: "t" }, s.title),
       el("div", { class: "d" }, s.detail || (isAlias ? `${s.alias} → ${s.entity_id}` : "")),
+      s.plan.length ? el("div", { class: "d" }, `${T.whenYouSay}: ${s.sentences.join(" / ")} → ${s.plan.join("; ")}`) : "",
       el("div", { class: "d" }, `“${s.phrase}”`), buttons));
   }
 }

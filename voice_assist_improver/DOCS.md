@@ -2,6 +2,23 @@
 
 Makes Home Assistant's Assist need an LLM less and less.
 
+## Requirements
+
+This app only talks to what Home Assistant offers it, so check these once:
+
+1. **Model Context Protocol Server** integration added (Settings → Devices & services → Add integration). It is
+   how the voice agent reads and controls the home.
+2. **Entities exposed to Assist** (Settings → Voice assistants → Expose). The app sees only those entities,
+   for voice and for suggestions. Do not expose what you do not want voice-controlled.
+3. An **Ollama** conversation agent pointing at this app (see Setup) and a pipeline that uses it with
+   *Prefer handling commands locally* on.
+4. An Anthropic API key, ideally in its own workspace with a spending limit.
+
+The app reaches Home Assistant through the Supervisor, with the access Home Assistant gives every app that
+asks for it (`homeassistant_api`). There is nothing to create or paste for that. Without a Supervisor (Home
+Assistant Container or Core) run the app as a normal container and set `VAI_HA_URL` and `VAI_HA_TOKEN`
+(a long-lived token) instead.
+
 ## Setup
 
 1. In the **Configuration** tab, paste your Anthropic API key, pick the language, and start the app.
@@ -19,6 +36,27 @@ The *Voice Assist* entry in the sidebar shows how many requests needed the LLM e
 coming back, the spend, and a list of **suggestions** (aliases that would let Assist handle those phrases
 locally). Apply a suggestion with *Do it for me* (you confirm first, and can undo), or do it yourself and
 mark it done. *Never again* hides a suggestion for good.
+
+## What suggestions can do
+
+- **Alias**: another name for an entity ("pendente da sala"). Reversible.
+- **Automation**: a sentence you say triggers a fixed action ("luz baixa" → lights at 30 %). Created as a normal
+  automation named *Voice Assist Improver: …* with a sentence trigger. Reversible: *Undo* deletes it.
+- **Scene**: a named set of entity states ("modo cinema") plus a sentence that activates it. Reversible.
+- **Tip**: advice you carry out yourself.
+
+The model only proposes. Code checks every proposal before it is stored and again before it is applied:
+entities must be exposed to Assist and allowed by the policy below, services come from a short allow-list with
+range-checked values, sentences are plain words, and nothing from a template is ever written. You always see
+the plan and confirm it first.
+
+## Safety policy
+
+By default suggestions only involve lights, switches, climate, covers, fans, valves and media players, and
+never entities whose device class is garage, garage door, gate or door. Locks and alarms are not in the list.
+Both lists are settings (*Domains suggestions may touch*, *Blocked device classes*) so you can widen or narrow
+them. Widening is your decision: a suggestion that can open a gate or unlock a door can be triggered by anyone
+who can speak to your assistant.
 
 ## Cost and privacy
 

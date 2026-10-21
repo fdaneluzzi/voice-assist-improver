@@ -58,6 +58,17 @@ Home Assistant (Assist, "Ollama" agent) ──► Voice Assist Improver ──�
 
 Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## What you need in Home Assistant
+
+- The **Model Context Protocol Server** integration (how the voice agent reads and controls the home).
+- The entities you want voice-controlled **exposed to Assist**. The app sees nothing else.
+- An **Ollama** conversation agent pointing at the app, in a pipeline with *Prefer handling commands locally*.
+- An Anthropic API key (ideally in its own workspace with a spending limit).
+
+As a Home Assistant app it reaches Home Assistant through the Supervisor with the standard app access, so there
+is no token to create. Details, and what suggestions may and may not touch (a configurable safety policy), are in
+[voice_assist_improver/DOCS.md](voice_assist_improver/DOCS.md).
+
 ## Install as a Home Assistant app
 
 The repository is a Home Assistant app repository (`repository.yaml`, folder `voice_assist_improver/`). Add its

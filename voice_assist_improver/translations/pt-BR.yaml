@@ -29,6 +29,12 @@ configuration:
   analysis_hour:
     name: Hora da análise diária
     description: Hora local (0-23) da análise diária. -1 desliga o agendamento.
+  suggestion_domains:
+    name: Domínios que as sugestões podem tocar
+    description: Apelidos, automações e cenas só são sugeridos para entidades destes domínios. Fechaduras e alarmes ficam de fora por padrão; inclua lock ou alarm_control_panel só se quiser sugestões para eles.
+  blocked_device_classes:
+    name: Classes de dispositivo bloqueadas
+    description: Entidades com estas classes nunca entram numa sugestão, mesmo que o domínio seja permitido (portas de garagem, portões e portas, por padrão).
   voice_token:
     name: Token do Home Assistant para voz (avançado)
     description: Opcional. Token de longa duração de um usuário sem administrador, para as ferramentas de voz rodarem com menos privilégios que o acesso próprio do app. Deixe de fora, a menos que queira isso.

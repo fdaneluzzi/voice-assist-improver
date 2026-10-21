@@ -19,7 +19,9 @@ from .budget import Budget
 from .config import Settings
 from .cost import Usage, usage_record
 from .ha.aliases import AliasError, check_alias
+from .ha.automations import PlanError, build_plan, describe_services, plan_fingerprint_text
 from .ha.entities import fetch_entities, is_safe
+from .policy import DEFAULT_POLICY, Policy
 from .store import Store
 from .text import norm
 
@@ -38,12 +40,32 @@ REPORT_TOOL = {
         "properties": {"suggestions": {"type": "array", "items": {
             "type": "object",
             "properties": {
-                "kind": {"type": "string", "enum": ["alias", "tip"]},
+                "kind": {"type": "string", "enum": ["alias", "automation", "scene", "tip"]},
                 "phrase": {"type": "string", "description": "The phrase from the list behind this."},
-                "entity_id": {"type": "string", "description": "alias only: the entity that should answer."},
-                "alias": {"type": "string", "description": "alias only: the name the user actually said."},
                 "title": {"type": "string", "description": "One short line for the user."},
                 "detail": {"type": "string", "description": "One or two sentences of explanation."},
+                "entity_id": {"type": "string", "description": "alias only: the entity that should answer."},
+                "alias": {"type": "string", "description": "alias only: the name the user actually said."},
+                "sentences": {"type": "array", "items": {"type": "string"},
+                              "description": "automation/scene: up to 3 extra ways to say it (plain words)."},
+                "actions": {"type": "array", "description": "automation only: what to do.", "items": {
+                    "type": "object",
+                    "properties": {
+                        "service": {"type": "string", "description": "domain.service, e.g. light.turn_on"},
+                        "entity_ids": {"type": "array", "items": {"type": "string"}},
+                        "data": {"type": "object", "description": "service data, e.g. {brightness_pct: 30}"},
+                    },
+                    "required": ["service", "entity_ids"]}},
+                "name": {"type": "string", "description": "scene only: the scene name."},
+                "states": {"type": "array", "description": "scene only: the state of each entity.", "items": {
+                    "type": "object",
+                    "properties": {
+                        "entity_id": {"type": "string"},
+                        "state": {"type": "string", "description": "on, off, open, closed or an HVAC mode"},
+                        "data": {"type": "object", "description": "e.g. {brightness_pct: 30}"},
+                    },
+                    "required": ["entity_id", "state"]}},
+                "response": {"type": "string", "description": "automation/scene: short plain spoken reply."},
             },
             "required": ["kind", "phrase", "title"],
         }}},
@@ -54,21 +76,31 @@ REPORT_TOOL = {
 SYSTEM_PROMPT = """You help improve a smart home voice assistant (Home Assistant "Assist").
 
 Assist understands a command locally, for free and instantly, only when it matches the exact name of an \
-entity, an alias, or the area name. Everything else falls back to a slow, paid LLM. You get the phrases that \
-fell back recently, what the LLM did about them, and the entities exposed to Assist with their names and \
-aliases. Find changes that would let Assist handle those phrases locally next time.
+entity, an alias, the area name, or a sentence-triggered automation. Everything else falls back to a slow, \
+paid LLM. You get the phrases that fell back recently, what the LLM did about them, and the entities \
+exposed to Assist with their names and aliases. Find changes that let Assist handle those phrases locally.
 
-Rules:
-- kind "alias": the phrase refers to ONE entity by a name Assist does not know. Propose that name as an \
+Kinds, from simplest to most involved. Prefer the simplest that fixes the phrase:
+- "alias": the phrase refers to ONE entity by a name Assist does not know. Propose that name as an \
 alias for that entity. The alias must be the noun phrase the user said (for example "pendente da sala"), \
 without verbs or filler words, and must literally appear in the phrase. Use only entity ids listed.
-- Do not invent aliases from words that look like speech-recognition mistakes unless the phrase repeats.
-- kind "tip": something that an alias cannot fix but the user could act on (a phrase that keeps coming back \
-and needs a sentence-triggered automation or a scene, for example). At most three. Never suggest anything \
-about locks, alarms, doors or gates.
+- "automation": a command that does a fixed thing the LLM did the same way each time (set brightness, \
+turn several lights on and off, set a temperature). Give "actions" as a list of {service, entity_ids, \
+data}. Allowed services and data: {services}. The user's own phrase becomes the trigger sentence \
+automatically; "sentences" may add up to 3 variants. "response" is an optional short reply.
+- "scene": a named mood or mode that sets several entities to given states ("modo cinema"). Give "name" and \
+"states" (light on/off with brightness_pct and color_temp_kelvin; switch on/off; fan on/off with percentage; \
+cover open/closed with position; climate hvac mode with temperature).
+- "tip": something none of the above can fix but the user could act on. At most three.
+- Never use entities that are not in the list. Never invent services, attributes or templates.
+- Do not invent anything from words that look like speech-recognition mistakes unless the phrase repeats.
 - Phrases that genuinely need an LLM (weather, general questions, open conversation) need no suggestion.
 - Prefer phrases that repeat. Quality over quantity: an empty list is a good answer.
 - Write titles and details in the language the user asks for."""
+
+
+def system_prompt() -> str:
+    return SYSTEM_PROMPT.replace("{services}", describe_services())
 
 
 def fingerprint(kind: str, entity_id: str | None, text: str) -> str:
@@ -94,20 +126,22 @@ def summarize_phrases(interactions: list[dict]) -> list[dict]:
     return sorted(groups.values(), key=lambda g: (-g["count"], -g["last"]))[:MAX_PHRASES]
 
 
-def build_prompt(phrases: list[dict], entities: list[dict], language: str) -> str:
+def build_prompt(phrases: list[dict], entities: list[dict], language: str,
+                 policy: Policy = DEFAULT_POLICY) -> str:
     lines = ["## Phrases that reached the LLM"]
     for g in phrases:
         tools = "; ".join(g["tools"]) or "no tools"
         lines.append(f'- "{g["phrase"]}" x{g["count"]} | LLM did: {tools} | replied: {g["reply"][:120]!r}')
     lines.append("\n## Entities exposed to Assist (id | name | area | aliases)")
     for e in entities:
-        if is_safe(e):
+        if is_safe(e, policy):
             lines.append(f"{e['id']} | {e['name']} | {e['area'] or '-'} | {', '.join(e['aliases']) or '-'}")
     lines.append(f"\nWrite titles and details in: {language}.")
     return "\n".join(lines)
 
 
-def validate(items: list[dict], phrases: list[dict], entities: list[dict]) -> tuple[list[dict], list[str]]:
+def validate(items: list[dict], phrases: list[dict], entities: list[dict],
+             policy: Policy = DEFAULT_POLICY) -> tuple[list[dict], list[str]]:
     """Keep the proposals that pass the deterministic checks. Returns (accepted, reasons for rejections)."""
     seen = {norm(g["phrase"]): g for g in phrases}
     accepted: list[dict] = []
@@ -122,10 +156,11 @@ def validate(items: list[dict], phrases: list[dict], entities: list[dict]) -> tu
         if group is None or not title:
             rejected.append(f"{item.get('title') or item.get('phrase')!r}: phrase not in the recent list")
             continue
+        common = {"title": title, "detail": detail, "phrase": group["phrase"], "evidence": group["count"]}
         if kind == "alias":
             eid = str(item.get("entity_id", ""))
             try:
-                alias = check_alias(str(item.get("alias", "")), eid, taken)
+                alias = check_alias(str(item.get("alias", "")), eid, taken, policy)
             except AliasError as exc:
                 rejected.append(f"{item.get('alias')!r} -> {eid}: {exc}")
                 continue
@@ -134,13 +169,19 @@ def validate(items: list[dict], phrases: list[dict], entities: list[dict]) -> tu
                 continue
             target = next(e for e in taken if e["id"] == eid)
             target["aliases"] = [*target["aliases"], alias]  # block a duplicate alias in the same run
-            accepted.append({"kind": "alias", "entity_id": eid, "alias": alias, "title": title,
-                             "detail": detail, "phrase": group["phrase"], "evidence": group["count"],
+            accepted.append({**common, "kind": "alias", "entity_id": eid, "alias": alias,
                              "fingerprint": fingerprint("alias", eid, alias)})
+        elif kind in ("automation", "scene"):
+            try:
+                plan = build_plan(kind, item, group["phrase"], entities, policy)
+            except PlanError as exc:
+                rejected.append(f"{title!r}: {exc}")
+                continue
+            accepted.append({**common, "kind": kind, "entity_id": None, "alias": None, "payload": plan,
+                             "fingerprint": fingerprint(kind, None, plan_fingerprint_text(kind, plan))})
         elif kind == "tip" and tips < MAX_TIPS:
             tips += 1
-            accepted.append({"kind": "tip", "entity_id": None, "alias": None, "title": title,
-                             "detail": detail, "phrase": group["phrase"], "evidence": group["count"],
+            accepted.append({**common, "kind": "tip", "entity_id": None, "alias": None,
                              "fingerprint": fingerprint("tip", None, title)})
         else:
             rejected.append(f"{title!r}: unsupported kind or too many tips")
@@ -185,13 +226,14 @@ class Analyzer:
         try:
             entities = await fetch_entities(self.s)
             response = await self.client.messages.create(
-                model=model, max_tokens=4096, system=SYSTEM_PROMPT, tools=[REPORT_TOOL],
+                model=model, max_tokens=8192, system=system_prompt(), tools=[REPORT_TOOL],
                 output_config={"effort": "medium"},
-                messages=[{"role": "user", "content": build_prompt(phrases, entities, self.s.language)}])
+                messages=[{"role": "user",
+                           "content": build_prompt(phrases, entities, self.s.language, self.s.policy)}])
             usage.add(response.usage)
             call = next((b for b in response.content if b.type == "tool_use"), None)
             items = list((call.input if call else {}).get("suggestions") or [])
-            accepted, rejected = validate(items, phrases, entities)
+            accepted, rejected = validate(items, phrases, entities, self.s.policy)
             created = 0
             for s in accepted:
                 if self.store.add_suggestion(**s, now=now) is not None:

@@ -15,6 +15,7 @@ import sys
 import time
 
 from ..config import Settings
+from ..policy import DEFAULT_POLICY, Policy
 from ..text import norm
 from .entities import fetch_entities, is_safe
 from .ws import HAError, connect
@@ -41,13 +42,13 @@ def needs_repair(entity: dict) -> bool:
     return bool(entity["aliases"]) and None not in entity["aliases_raw"]
 
 
-def check_alias(alias: str, entity_id: str, entities: list[dict]) -> str:
+def check_alias(alias: str, entity_id: str, entities: list[dict], policy: Policy = DEFAULT_POLICY) -> str:
     """Validate an alias against the exposed entities. Returns the cleaned alias or raises AliasError."""
     alias = " ".join(alias.split())
     target = next((e for e in entities if e["id"] == entity_id), None)
     if target is None:
         raise AliasError(f"{entity_id} is not exposed to Assist")
-    if not is_safe(target):
+    if not is_safe(target, policy):
         raise AliasError(f"{entity_id} is not an entity type that may receive aliases")
     if not (2 <= len(alias) <= MAX_ALIAS_LENGTH) or not re.search(r"[^\W\d_]", alias):
         raise AliasError("invalid alias (length, or no letters)")
@@ -74,7 +75,7 @@ def _audit(settings: Settings, **record) -> None:
 
 async def apply_alias(settings: Settings, entity_id: str, alias: str) -> str:
     entities = await fetch_entities(settings)
-    alias = check_alias(alias, entity_id, entities)
+    alias = check_alias(alias, entity_id, entities, settings.policy)
     target = next(e for e in entities if e["id"] == entity_id)
     async with connect(settings) as ha:
         await ha.call({"type": "config/entity_registry/update", "entity_id": entity_id,
@@ -124,7 +125,7 @@ async def apply_many(settings: Settings, items: list[dict]) -> tuple[list[str], 
         for item in items:
             eid, raw_alias = str(item.get("entity_id", "")), str(item.get("alias", ""))
             try:
-                alias = check_alias(raw_alias, eid, entities)
+                alias = check_alias(raw_alias, eid, entities, settings.policy)
                 target = by_id[eid]
                 await ha.call({"type": "config/entity_registry/update", "entity_id": eid,
                                "aliases": with_alias(target["aliases_raw"], alias)})

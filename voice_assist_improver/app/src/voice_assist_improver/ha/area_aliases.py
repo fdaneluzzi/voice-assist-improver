@@ -10,6 +10,7 @@ so only pt-BR rules exist for now; other languages return no proposals.
 from __future__ import annotations
 
 from ..i18n import normalize_language
+from ..policy import DEFAULT_POLICY, Policy
 from ..text import norm
 from .aliases import AliasError, check_alias
 from .entities import is_safe
@@ -46,13 +47,13 @@ def split_name(name: str, area: str) -> str | None:
     return " ".join(thing)
 
 
-def generate(entities: list[dict], language: str = "pt-BR") -> list[dict]:
+def generate(entities: list[dict], language: str = "pt-BR", policy: Policy = DEFAULT_POLICY) -> list[dict]:
     """Valid, de-duplicated proposals: [{entity_id, alias, name}]."""
     if normalize_language(language) != "pt-BR":
         return []
     candidates = []
     for e in entities:
-        if e["domain"] not in DOMAINS or not e.get("area") or not is_safe(e):
+        if e["domain"] not in DOMAINS or not e.get("area") or not is_safe(e, policy):
             continue
         thing = split_name(e["name"], e["area"])
         if not thing or len(norm(thing)) < MIN_THING_LENGTH:
@@ -67,7 +68,7 @@ def generate(entities: list[dict], language: str = "pt-BR") -> list[dict]:
     accepted = []
     for c in unique:
         try:
-            c["alias"] = check_alias(c["alias"], c["entity_id"], entities)
+            c["alias"] = check_alias(c["alias"], c["entity_id"], entities, policy)
         except AliasError:
             continue
         accepted.append(c)

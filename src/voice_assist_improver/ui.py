@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from .analysis import Analyzer
 from .config import Settings
 from .ha.aliases import AliasError, apply_alias, remove_alias
+from .ha.automations import apply_plan, undo_plan
 from .ha.entities import fetch_entities
 from .ha.ws import HAError
 from .models import ModelCatalog
@@ -32,8 +33,14 @@ class StatusBody(BaseModel):
 
 
 def _public_suggestion(s: dict) -> dict:
-    return {k: s[k] for k in ("id", "kind", "entity_id", "alias", "phrase", "title", "detail", "evidence",
-                              "status", "verified", "updated")}
+    out = {k: s[k] for k in ("id", "kind", "entity_id", "alias", "phrase", "title", "detail", "evidence",
+                             "status", "verified", "updated")}
+    plan = s.get("payload") or {}
+    out["plan"] = plan.get("plan", [])  # human-readable lines of what "Do it for me" would create
+    out["sentences"] = plan.get("sentences", [])
+    out["applied"] = bool(s.get("applied")) or (s["kind"] == "alias" and s["status"] == "done"
+                                                 and bool(s["verified"]))
+    return out
 
 
 def build_router(settings: Settings, store: Store, backend: Any, analyzer: Analyzer | None,
@@ -94,20 +101,32 @@ def build_router(settings: Settings, store: Store, backend: Any, analyzer: Analy
             raise HTTPException(404, "no such suggestion")
         return {"ok": True}
 
-    def alias_suggestion(suggestion_id: int) -> dict:
+    def suggestion_or_404(suggestion_id: int) -> dict:
         s = store.get_suggestion(suggestion_id)
         if s is None:
             raise HTTPException(404, "no such suggestion")
+        return s
+
+    def alias_suggestion(suggestion_id: int) -> dict:
+        s = suggestion_or_404(suggestion_id)
         if s["kind"] != "alias" or not s["entity_id"] or not s["alias"]:
             raise HTTPException(400, "this suggestion cannot be applied automatically")
         return s
 
     @router.post("/api/suggestions/{suggestion_id}/apply")
     async def apply(suggestion_id: int):
-        """Executes the (already validated) alias plan; the executor re-checks everything and verifies it."""
-        s = alias_suggestion(suggestion_id)
+        """Executes the (already validated) plan; the executors re-check everything and verify the result."""
+        s = suggestion_or_404(suggestion_id)
         try:
-            message = await apply_alias(settings, s["entity_id"], s["alias"])
+            if s["kind"] == "alias":
+                s = alias_suggestion(suggestion_id)
+                message = await apply_alias(settings, s["entity_id"], s["alias"])
+            elif s["kind"] in ("automation", "scene") and s["payload"]:
+                ref = await apply_plan(settings, s, s["payload"], await fetch_entities(settings))
+                store.set_suggestion_applied(suggestion_id, ref)
+                message = f"created {' and '.join(k for k in ('scene', 'automation') if ref.get(k))}"
+            else:
+                raise HTTPException(400, "this suggestion cannot be applied automatically")
         except (AliasError, HAError) as exc:
             raise HTTPException(409, str(exc)) from exc
         store.set_suggestion_status(suggestion_id, "done", verified=True)
@@ -115,9 +134,17 @@ def build_router(settings: Settings, store: Store, backend: Any, analyzer: Analy
 
     @router.post("/api/suggestions/{suggestion_id}/undo")
     async def undo(suggestion_id: int):
-        s = alias_suggestion(suggestion_id)
+        s = suggestion_or_404(suggestion_id)
         try:
-            message = await remove_alias(settings, s["entity_id"], s["alias"])
+            if s["kind"] == "alias":
+                s = alias_suggestion(suggestion_id)
+                message = await remove_alias(settings, s["entity_id"], s["alias"])
+            elif s["applied"]:
+                await undo_plan(settings, s["applied"])
+                store.set_suggestion_applied(suggestion_id, None)
+                message = "removed"
+            else:
+                raise HTTPException(400, "nothing to undo")
         except (AliasError, HAError) as exc:
             raise HTTPException(409, str(exc)) from exc
         store.set_suggestion_status(suggestion_id, "new")

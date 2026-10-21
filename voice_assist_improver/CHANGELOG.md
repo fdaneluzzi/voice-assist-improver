@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0
+- Suggestions can now be sentence-triggered automations and scenes, not only aliases. Each one is validated,
+  shown as a plan, created only after you confirm, and can be undone.
+- The safety policy (domains and blocked device classes) is now configurable; the defaults are unchanged.
+
 ## 0.1.3
 - Models are free text, not a fixed list; the panel warns when a model is not available to the API key, and
   Home Assistant's model picker lists the models the key can actually use.

@@ -29,6 +29,12 @@ configuration:
   analysis_hour:
     name: Daily analysis hour
     description: Local hour (0-23) of the daily analysis. -1 turns the schedule off.
+  suggestion_domains:
+    name: Domains suggestions may touch
+    description: Aliases, automations and scenes are only suggested for entities in these domains. Locks and alarms are left out by default; add lock or alarm_control_panel only if you want suggestions for them.
+  blocked_device_classes:
+    name: Blocked device classes
+    description: Entities with these device classes are never part of a suggestion, even if their domain is allowed (garage doors, gates and doors by default).
   voice_token:
     name: Home Assistant token for voice (advanced)
     description: Optional. A long-lived token of a non-admin user, so voice tools run with fewer privileges than the app's own access. Leave it out unless you want that.

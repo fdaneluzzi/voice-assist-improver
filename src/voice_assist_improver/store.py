@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS suggestions (
     evidence    INTEGER NOT NULL DEFAULT 0,
     status      TEXT    NOT NULL DEFAULT 'new',
     verified    INTEGER NOT NULL DEFAULT 0,
+    payload     TEXT,
+    applied     TEXT,
     created     REAL    NOT NULL,
     updated     REAL    NOT NULL
 );
@@ -64,6 +66,8 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
     error        TEXT
 );
 """
+
+SUGGESTION_MIGRATIONS = {"payload": "TEXT", "applied": "TEXT"}
 
 # Suggestion lifecycle. "never" is the blocklist: such a suggestion is never created again.
 STATUSES = ("new", "done", "dismissed", "never")
@@ -88,6 +92,10 @@ class Store:
             for column, kind in MIGRATIONS.items():
                 if column not in existing:
                     self._db.execute(f"ALTER TABLE interactions ADD COLUMN {column} {kind}")
+            have = {row["name"] for row in self._db.execute("PRAGMA table_info(suggestions)")}
+            for column, kind in SUGGESTION_MIGRATIONS.items():
+                if column not in have:
+                    self._db.execute(f"ALTER TABLE suggestions ADD COLUMN {column} {kind}")
             self._db.commit()
 
     def close(self) -> None:
@@ -230,7 +238,8 @@ class Store:
 
     def add_suggestion(self, *, fingerprint: str, kind: str, title: str, detail: str = "",
                        entity_id: str | None = None, alias: str | None = None, phrase: str = "",
-                       evidence: int = 0, now: float | None = None) -> int | None:
+                       evidence: int = 0, payload: dict | None = None,
+                       now: float | None = None) -> int | None:
         """Store a new suggestion. Returns its id, or None when it must not be shown again: it already
         exists (new/done), was blocked ("never"), or was dismissed less than DISMISS_QUIET_DAYS ago."""
         now = now if now is not None else time.time()
@@ -243,14 +252,17 @@ class Store:
                 if not (row["status"] == "dismissed" and now >= quiet_until):
                     return None
                 self._db.execute(
-                    "UPDATE suggestions SET status='new', title=?, detail=?, phrase=?, evidence=?, updated=?"
-                    " WHERE id = ?", (title, detail, phrase, evidence, now, row["id"]))
+                    "UPDATE suggestions SET status='new', title=?, detail=?, phrase=?, evidence=?, payload=?,"
+                    " updated=? WHERE id = ?",
+                    (title, detail, phrase, evidence, json.dumps(payload) if payload else None, now,
+                     row["id"]))
                 self._db.commit()
                 return int(row["id"])
             cur = self._db.execute(
                 "INSERT INTO suggestions (fingerprint, kind, entity_id, alias, phrase, title, detail,"
-                " evidence, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (fingerprint, kind, entity_id, alias, phrase, title, detail, evidence, now, now))
+                " evidence, payload, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (fingerprint, kind, entity_id, alias, phrase, title, detail, evidence,
+                 json.dumps(payload) if payload else None, now, now))
             self._db.commit()
             return int(cur.lastrowid)
 
@@ -261,12 +273,26 @@ class Store:
             query, args = query + " WHERE status = ?", (status,)
         with self._lock:
             rows = self._db.execute(query + " ORDER BY evidence DESC, created DESC", args).fetchall()
-        return [dict(r) for r in rows]
+        return [self._decode_suggestion(r) for r in rows]
 
     def get_suggestion(self, suggestion_id: int) -> dict | None:
         with self._lock:
             row = self._db.execute("SELECT * FROM suggestions WHERE id = ?", (suggestion_id,)).fetchone()
-        return dict(row) if row else None
+        return self._decode_suggestion(row) if row else None
+
+    @staticmethod
+    def _decode_suggestion(row: sqlite3.Row) -> dict:
+        d = dict(row)
+        d["payload"] = json.loads(d["payload"]) if d.get("payload") else None
+        d["applied"] = json.loads(d["applied"]) if d.get("applied") else None
+        return d
+
+    def set_suggestion_applied(self, suggestion_id: int, ref: dict | None) -> None:
+        """What was created in Home Assistant for this suggestion (None after an undo)."""
+        with self._lock:
+            self._db.execute("UPDATE suggestions SET applied = ? WHERE id = ?",
+                             (json.dumps(ref) if ref else None, suggestion_id))
+            self._db.commit()
 
     def set_suggestion_status(self, suggestion_id: int, status: str, verified: bool = False,
                               now: float | None = None) -> bool:
