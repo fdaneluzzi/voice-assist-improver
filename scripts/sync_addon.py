@@ -13,7 +13,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DEST = ROOT / "voice_assist_improver" / "app"
 FILES = ["pyproject.toml", "README.md", "LICENSE"]
-IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", "*.egg-info")
+JUNK = ["__pycache__", ".ruff_cache", ".pytest_cache"]
+IGNORE = shutil.ignore_patterns(*JUNK, "*.pyc", "*.egg-info")
 
 
 def build(dest: Path) -> None:
@@ -26,7 +27,7 @@ def build(dest: Path) -> None:
 
 
 def same(a: Path, b: Path) -> bool:
-    cmp = filecmp.dircmp(a, b, ignore=["__pycache__"])
+    cmp = filecmp.dircmp(a, b, ignore=JUNK)
     if cmp.left_only or cmp.right_only or cmp.funny_files:
         return False
     _, mismatch, errors = filecmp.cmpfiles(a, b, cmp.common_files, shallow=False)

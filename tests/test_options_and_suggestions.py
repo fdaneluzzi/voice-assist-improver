@@ -131,8 +131,8 @@ def test_validate_accepts_good_alias_and_rejects_bad_ones():
     items = [
         {"kind": "alias", "phrase": "Acende o pendente da sala", "entity_id": "light.sala_pendente",
          "alias": "pendente da sala", "title": "Pendente"},
-        {"kind": "alias", "phrase": "Acende o pendente da sala", "entity_id": "lock.porta",
-         "alias": "pendente", "title": "lock"},                                  # unsafe domain
+        {"kind": "alias", "phrase": "Acende o pendente da sala", "entity_id": "light.nope",
+         "alias": "pendente", "title": "unknown"},                               # not exposed to Assist
         {"kind": "alias", "phrase": "Acende o pendente da sala", "entity_id": "light.cozinha",
          "alias": "lustre", "title": "not in phrase"},                           # alias not said
         {"kind": "alias", "phrase": "never said", "entity_id": "light.cozinha",

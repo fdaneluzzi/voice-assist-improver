@@ -37,7 +37,7 @@ Home Assistant (Assist, "Ollama" agent) ──► Voice Assist Improver ──�
   before anything touches Home Assistant, every change is audited, and nothing is applied without you.
 - **Least privilege.** Voice requests only ever get voice tools. Administrator tools exist only for the
   scheduled analysis and the "do it for me" action, never in the voice path.
-- **Safe by default.** Locks, alarms and gates are never offered aliases or suggestions. Web search is off
+- **Exposure is the control.** The app only sees entities you exposed to Assist; keep alarms, locks and gates unexposed. Created automations and scenes use only validated services (none for locks or alarms). Web search is off
   unless you turn it on. The endpoint listens on loopback until you open it.
 - **Your data stays with you.** Interactions are stored locally, with a retention setting.
 - **API key first.** The Anthropic API is the supported backend. See [docs/DECISIONS.md](docs/DECISIONS.md)
@@ -66,7 +66,7 @@ Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - An Anthropic API key (ideally in its own workspace with a spending limit).
 
 As a Home Assistant app it reaches Home Assistant through the Supervisor with the standard app access, so there
-is no token to create. Details, and what suggestions may and may not touch (a configurable safety policy), are in
+is no token to create. Details, and what the assistant may and may not control, are in
 [voice_assist_improver/DOCS.md](voice_assist_improver/DOCS.md).
 
 ## Install as a Home Assistant app

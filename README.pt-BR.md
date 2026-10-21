@@ -27,7 +27,7 @@ viu**. Se as melhorias funcionam, esses números caem.
 - **O modelo propõe, o código valida e aplica.** Nada é aplicado sem você, e tudo fica registrado.
 - **Menor privilégio.** Pedidos de voz só recebem ferramentas de voz; as de administrador existem apenas
   para a análise agendada e para o "faça por mim".
-- **Seguro por padrão.** Fechaduras, alarmes e portões nunca recebem aliases nem sugestões. A busca na web
+- **A exposição é o controle.** O app só enxerga as entidades que você expôs ao Assist; deixe alarmes, fechaduras e portões sem expor. Automações e cenas criadas usam só serviços validados (nenhum para fechaduras ou alarmes). A busca na web
   fica desligada até você ligar. O endpoint só escuta no loopback até você abrir.
 - **Seus dados ficam com você**, guardados localmente, com retenção configurável.
 - **Chave de API primeiro.** Veja [docs/DECISIONS.md](docs/DECISIONS.md).

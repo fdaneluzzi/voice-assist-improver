@@ -2,12 +2,7 @@
 from __future__ import annotations
 
 from ..config import Settings
-from ..policy import BLOCKED_DEVICE_CLASSES, DEFAULT_POLICY, SAFE_DOMAINS, Policy  # noqa: F401
 from .ws import connect
-
-
-def is_safe(entity: dict, policy: Policy = DEFAULT_POLICY) -> bool:
-    return policy.allows(entity)
 
 
 async def fetch_entities(settings: Settings) -> list[dict]:

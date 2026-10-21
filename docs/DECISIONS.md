@@ -73,8 +73,8 @@ nothing for languages that do not need it.
 
 ## D9: privacy and safety defaults
 
-Loopback-only listener by default. Interactions are stored locally with a retention period. Locks, alarms,
-garage doors and gates are never given aliases or suggestions. Logs never contain credentials.
+Loopback-only listener by default. Interactions are stored locally with a retention period. Logs never contain
+credentials. What the assistant may control is decided by exposure in Home Assistant (see D11).
 
 ## D10 (2026-10-21): Anthropic backend choices
 
@@ -90,3 +90,16 @@ garage doors and gates are never given aliases or suggestions. Logs never contai
   monthly cap. Prices in the table must be re-checked against the provider before trusting a cap.
 - Not yet verified against the live API (no key yet): the exact request shape comes from the SDK documentation
   and a parameter check against the installed SDK; `smoke ask` is the first real test.
+
+## D11 (2026-10-21): exposure to Assist is the single control for what the app may touch
+
+First version: a configurable list of domains and device classes that suggestions could involve, with locks,
+alarms and gates left out. Dropped: it duplicated Home Assistant's own control and was specific to one house.
+Home Assistant already decides what Assist (and an AI behind it) can see and act on: the entities exposed to
+Assist. The app lists only those, so an unexposed alarm, lock or gate is invisible to it.
+
+Kept, because they are technical limits and not policy: suggestions are only proposals the user confirms; the
+automation and scene executors accept a short allow-list of services with range-checked data (no service for
+locks or alarms exists in it); and `voice_tool_denylist` can hide tools by name. Aliases may be suggested for
+any exposed entity. Tradeoff to document honestly: exposure is all-or-nothing per entity, so someone who exposes
+a lock to be able to ask whether it is locked also lets the voice agent try to operate it.

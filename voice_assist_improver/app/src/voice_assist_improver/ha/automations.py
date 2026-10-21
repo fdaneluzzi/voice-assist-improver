@@ -3,7 +3,7 @@
 A model may *propose* an automation ("when someone says X, do Y") or a scene, but it never writes Home
 Assistant configuration. A proposal is turned into a plan by `build_plan`, which only accepts:
 
-- entities that are exposed to Assist and allowed by the user's policy (no locks/alarms/gates by default),
+- entities that are exposed to Assist (what the user did not expose is invisible to the app),
 - services from a small allow-list per domain, with typed and range-checked data,
 - plain sentences (no wildcards, no templates anywhere).
 
@@ -19,7 +19,6 @@ from typing import Any
 import httpx
 
 from ..config import Settings
-from ..policy import DEFAULT_POLICY, Policy
 from ..text import norm
 from .aliases import _audit
 from .ws import HAError
@@ -141,19 +140,16 @@ def _clean_response(value: Any) -> str | None:
     return text[:MAX_RESPONSE_LENGTH] or None
 
 
-def _entity(entities_by_id: dict[str, dict], entity_id: Any, policy: Policy,
-            domain: str | None = None) -> dict:
+def _entity(entities_by_id: dict[str, dict], entity_id: Any, domain: str | None = None) -> dict:
     entity = entities_by_id.get(str(entity_id))
     if entity is None:
         raise PlanError(f"{entity_id} is not exposed to Assist")
-    if not policy.allows(entity):
-        raise PlanError(f"{entity_id} is not allowed by the policy")
     if domain and entity["domain"] != domain:
         raise PlanError(f"{entity_id} is not a {domain}")
     return entity
 
 
-def _plan_actions(raw: Any, entities_by_id: dict[str, dict], policy: Policy) -> tuple[list[dict], list[str]]:
+def _plan_actions(raw: Any, entities_by_id: dict[str, dict]) -> tuple[list[dict], list[str]]:
     if not isinstance(raw, list) or not raw:
         raise PlanError("no actions")
     actions, lines = [], []
@@ -168,7 +164,7 @@ def _plan_actions(raw: Any, entities_by_id: dict[str, dict], policy: Policy) -> 
         ids = item.get("entity_ids") or []
         if not isinstance(ids, list) or not 1 <= len(ids) <= MAX_ENTITIES_PER_ACTION:
             raise PlanError(f"action {i}: needs 1 to {MAX_ENTITIES_PER_ACTION} entities")
-        ents = [_entity(entities_by_id, e, policy, domain) for e in ids]
+        ents = [_entity(entities_by_id, e, domain) for e in ids]
         data = _check_data(spec, item.get("data"), f"action {i}")
         actions.append({"service": service, "entity_ids": [e["id"] for e in ents], "data": data})
         detail = ", ".join(f"{k} {v}" for k, v in data.items())
@@ -176,14 +172,14 @@ def _plan_actions(raw: Any, entities_by_id: dict[str, dict], policy: Policy) -> 
     return actions, lines
 
 
-def _scene_states(raw: Any, entities_by_id: dict[str, dict], policy: Policy) -> tuple[list[dict], list[str]]:
+def _scene_states(raw: Any, entities_by_id: dict[str, dict]) -> tuple[list[dict], list[str]]:
     if not isinstance(raw, list) or not raw:
         raise PlanError("a scene needs entity states")
     states, lines = [], []
     for item in raw[:MAX_SCENE_ENTITIES]:
         if not isinstance(item, dict):
             raise PlanError("a scene state is not an object")
-        entity = _entity(entities_by_id, item.get("entity_id"), policy)
+        entity = _entity(entities_by_id, item.get("entity_id"))
         allowed = SCENE_STATES.get(entity["domain"])
         if allowed is None:
             raise PlanError(f"{entity['id']}: scenes do not support {entity['domain']}")
@@ -197,8 +193,7 @@ def _scene_states(raw: Any, entities_by_id: dict[str, dict], policy: Policy) -> 
     return states, lines
 
 
-def build_plan(kind: str, item: dict, user_phrase: str, entities: list[dict],
-               policy: Policy = DEFAULT_POLICY) -> dict:
+def build_plan(kind: str, item: dict, user_phrase: str, entities: list[dict]) -> dict:
     """Validate a model proposal and return the plan to store: {"sentences", "response", "plan", ...}.
 
     Raises PlanError with the reason when anything is not acceptable.
@@ -207,13 +202,13 @@ def build_plan(kind: str, item: dict, user_phrase: str, entities: list[dict],
     sentences = clean_sentences(user_phrase, item.get("sentences"))
     response = _clean_response(item.get("response"))
     if kind == "automation":
-        actions, lines = _plan_actions(item.get("actions"), by_id, policy)
+        actions, lines = _plan_actions(item.get("actions"), by_id)
         return {"sentences": sentences, "response": response, "actions": actions, "plan": lines}
     if kind == "scene":
         name = " ".join(str(item.get("name", "")).split())[:60]
         if len(norm(name)) < 2:
             raise PlanError("a scene needs a name")
-        states, lines = _scene_states(item.get("states"), by_id, policy)
+        states, lines = _scene_states(item.get("states"), by_id)
         return {"sentences": sentences, "response": response, "name": name, "states": states, "plan": lines}
     raise PlanError(f"unsupported kind {kind!r}")
 
@@ -311,13 +306,13 @@ async def apply_plan(settings: Settings, suggestion: dict, plan: dict, entities:
     Returns a reference {"automation": id, "scene": id | None} that `undo_plan` takes.
     """
     kind, sid = suggestion["kind"], int(suggestion["id"])
-    # Re-validate against the current entities and the current policy.
+    # Re-validate against what is exposed to Assist right now.
     item = {"sentences": plan["sentences"][1:], "response": plan.get("response"),
             "actions": [{"service": a["service"], "entity_ids": a["entity_ids"], "data": a["data"]}
                         for a in plan.get("actions", [])],
             "name": plan.get("name"), "states": plan.get("states")}
     try:
-        build_plan(kind, item, plan["sentences"][0], entities, settings.policy)
+        build_plan(kind, item, plan["sentences"][0], entities)
     except PlanError as exc:
         raise HAError(f"the plan is no longer valid: {exc}") from exc
 

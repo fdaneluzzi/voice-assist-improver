@@ -1,9 +1,13 @@
 # Changelog
 
+## 0.2.1
+- Removed the domain and device-class lists for suggestions. Exposure to Assist is the single control: an entity
+  you did not expose is invisible to the app. Automations and scenes still only use a short list of validated
+  services (none for locks or alarms).
+
 ## 0.2.0
 - Suggestions can now be sentence-triggered automations and scenes, not only aliases. Each one is validated,
   shown as a plan, created only after you confirm, and can be undone.
-- The safety policy (domains and blocked device classes) is now configurable; the defaults are unchanged.
 
 ## 0.1.3
 - Models are free text, not a fixed list; the panel warns when a model is not available to the API key, and

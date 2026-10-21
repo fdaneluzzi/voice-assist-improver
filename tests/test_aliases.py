@@ -30,10 +30,14 @@ def test_rejects_bad_aliases(alias, entity, message):
         check_alias(alias, entity, ENTITIES)
 
 
-@pytest.mark.parametrize("entity", ["cover.gate", "lock.door", "light.unknown"])
-def test_never_allows_sensitive_or_unknown_entities(entity):
-    with pytest.raises(AliasError):
-        check_alias("open everything", entity, ENTITIES)
+def test_rejects_entities_that_are_not_exposed_to_assist():
+    with pytest.raises(AliasError, match="not exposed"):
+        check_alias("open everything", "light.unknown", ENTITIES)
+
+
+def test_exposure_in_home_assistant_is_the_gate_not_a_domain_list():
+    # Whatever the user exposed to Assist may get an alias; what is not exposed does not exist for the app.
+    assert check_alias("front door", "lock.door", ENTITIES) == "front door"
 
 
 def test_with_alias_never_drops_the_default_name_marker():

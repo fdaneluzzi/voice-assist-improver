@@ -20,8 +20,7 @@ from .config import Settings
 from .cost import Usage, usage_record
 from .ha.aliases import AliasError, check_alias
 from .ha.automations import PlanError, build_plan, describe_services, plan_fingerprint_text
-from .ha.entities import fetch_entities, is_safe
-from .policy import DEFAULT_POLICY, Policy
+from .ha.entities import fetch_entities
 from .store import Store
 from .text import norm
 
@@ -126,22 +125,19 @@ def summarize_phrases(interactions: list[dict]) -> list[dict]:
     return sorted(groups.values(), key=lambda g: (-g["count"], -g["last"]))[:MAX_PHRASES]
 
 
-def build_prompt(phrases: list[dict], entities: list[dict], language: str,
-                 policy: Policy = DEFAULT_POLICY) -> str:
+def build_prompt(phrases: list[dict], entities: list[dict], language: str) -> str:
     lines = ["## Phrases that reached the LLM"]
     for g in phrases:
         tools = "; ".join(g["tools"]) or "no tools"
         lines.append(f'- "{g["phrase"]}" x{g["count"]} | LLM did: {tools} | replied: {g["reply"][:120]!r}')
     lines.append("\n## Entities exposed to Assist (id | name | area | aliases)")
     for e in entities:
-        if is_safe(e, policy):
-            lines.append(f"{e['id']} | {e['name']} | {e['area'] or '-'} | {', '.join(e['aliases']) or '-'}")
+        lines.append(f"{e['id']} | {e['name']} | {e['area'] or '-'} | {', '.join(e['aliases']) or '-'}")
     lines.append(f"\nWrite titles and details in: {language}.")
     return "\n".join(lines)
 
 
-def validate(items: list[dict], phrases: list[dict], entities: list[dict],
-             policy: Policy = DEFAULT_POLICY) -> tuple[list[dict], list[str]]:
+def validate(items: list[dict], phrases: list[dict], entities: list[dict]) -> tuple[list[dict], list[str]]:
     """Keep the proposals that pass the deterministic checks. Returns (accepted, reasons for rejections)."""
     seen = {norm(g["phrase"]): g for g in phrases}
     accepted: list[dict] = []
@@ -160,7 +156,7 @@ def validate(items: list[dict], phrases: list[dict], entities: list[dict],
         if kind == "alias":
             eid = str(item.get("entity_id", ""))
             try:
-                alias = check_alias(str(item.get("alias", "")), eid, taken, policy)
+                alias = check_alias(str(item.get("alias", "")), eid, taken)
             except AliasError as exc:
                 rejected.append(f"{item.get('alias')!r} -> {eid}: {exc}")
                 continue
@@ -173,7 +169,7 @@ def validate(items: list[dict], phrases: list[dict], entities: list[dict],
                              "fingerprint": fingerprint("alias", eid, alias)})
         elif kind in ("automation", "scene"):
             try:
-                plan = build_plan(kind, item, group["phrase"], entities, policy)
+                plan = build_plan(kind, item, group["phrase"], entities)
             except PlanError as exc:
                 rejected.append(f"{title!r}: {exc}")
                 continue
@@ -229,11 +225,11 @@ class Analyzer:
                 model=model, max_tokens=8192, system=system_prompt(), tools=[REPORT_TOOL],
                 output_config={"effort": "medium"},
                 messages=[{"role": "user",
-                           "content": build_prompt(phrases, entities, self.s.language, self.s.policy)}])
+                           "content": build_prompt(phrases, entities, self.s.language)}])
             usage.add(response.usage)
             call = next((b for b in response.content if b.type == "tool_use"), None)
             items = list((call.input if call else {}).get("suggestions") or [])
-            accepted, rejected = validate(items, phrases, entities, self.s.policy)
+            accepted, rejected = validate(items, phrases, entities)
             created = 0
             for s in accepted:
                 if self.store.add_suggestion(**s, now=now) is not None:

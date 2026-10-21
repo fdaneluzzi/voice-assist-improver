@@ -1,5 +1,5 @@
 name: Voice Assist Improver
-version: "0.2.0"
+version: "0.2.1"
 slug: voice_assist_improver
 description: Makes Home Assistant's Assist need an LLM less and less
 url: https://github.com/fdaneluzzi/voice-assist-improver
@@ -26,19 +26,6 @@ options:
   voice_tool_denylist: []
   retention_days: 30
   analysis_hour: 4
-  suggestion_domains:
-    - light
-    - switch
-    - climate
-    - cover
-    - fan
-    - valve
-    - media_player
-  blocked_device_classes:
-    - gate
-    - garage
-    - garage_door
-    - door
 schema:
   anthropic_api_key: password
   anthropic_workspace_id: str?
@@ -51,8 +38,4 @@ schema:
     - str
   retention_days: int(1,3650)
   analysis_hour: int(-1,23)
-  suggestion_domains:
-    - str
-  blocked_device_classes:
-    - str
   voice_token: password?

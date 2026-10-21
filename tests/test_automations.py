@@ -8,7 +8,6 @@ from voice_assist_improver.config import Settings
 from voice_assist_improver.ha import automations
 from voice_assist_improver.ha.automations import PlanError, build_plan
 from voice_assist_improver.ha.ws import HAError
-from voice_assist_improver.policy import Policy
 from voice_assist_improver.store import Store
 
 
@@ -42,7 +41,6 @@ def test_automation_plan_is_built_with_the_users_phrase_as_first_sentence():
 @pytest.mark.parametrize("item, reason", [
     ({"actions": [{"service": "lock.unlock", "entity_ids": ["lock.porta"]}]}, "not allowed"),
     ({"actions": [{"service": "light.turn_on", "entity_ids": ["light.nope"]}]}, "not exposed"),
-    ({"actions": [{"service": "cover.open_cover", "entity_ids": ["cover.portao"]}]}, "policy"),
     ({"actions": [{"service": "light.turn_on", "entity_ids": ["light.led"], "data": {"brightness_pct": 400}}]},
      "between"),
     ({"actions": [{"service": "light.turn_on", "entity_ids": ["light.led"], "data": {"effect": "x"}}]},
@@ -70,26 +68,20 @@ def test_scene_plan_and_its_limits():
                    [ent("media_player.x", "X")])
 
 
-def test_policy_is_configurable_and_safe_by_default():
-    item = {"actions": [{"service": "light.turn_on", "entity_ids": ["light.pendente"]}]}
-    wide = Policy(frozenset({"light"}), frozenset())
-    assert build_plan("automation", item, "p", ENTITIES, wide)["actions"]
-    narrow = Policy(frozenset({"switch"}), frozenset())
-    with pytest.raises(PlanError, match="policy"):
-        build_plan("automation", item, "p", ENTITIES, narrow)
-    # a user who deliberately allows gates (and only then) can have them in a plan
-    gate = {"actions": [{"service": "cover.open_cover", "entity_ids": ["cover.portao"]}]}
-    with pytest.raises(PlanError):
-        build_plan("automation", gate, "p", ENTITIES)
-    assert build_plan("automation", gate, "p", ENTITIES, Policy(frozenset({"cover"}), frozenset()))
-
-
-def test_settings_policy_comes_from_options():
-    s = Settings.load(env_file="/nonexistent", environ={"VAI_SUGGESTION_DOMAINS": "light,lock",
-                                                         "VAI_BLOCKED_DEVICE_CLASSES": "gate"})
-    assert s.policy.domains == {"light", "lock"} and s.policy.blocked_device_classes == {"gate"}
-    default = Settings.load(env_file="/nonexistent", environ={}).policy
-    assert "lock" not in default.domains and "alarm_control_panel" not in default.domains
+def test_exposure_is_the_gate_and_unsupported_domains_have_no_services():
+    # What the user did not expose to Assist does not exist for the app...
+    hidden = [e for e in ENTITIES if e["id"] != "light.pendente"]
+    with pytest.raises(PlanError, match="not exposed"):
+        build_plan("automation", auto(), "p", hidden)
+    # ...and what is exposed is limited to the services the executors know how to validate: nothing for
+    # locks or alarms, so no automation or scene can unlock a door even if it is exposed.
+    for service in ("lock.unlock", "lock.lock", "alarm_control_panel.alarm_disarm"):
+        with pytest.raises(PlanError, match="not allowed"):
+            build_plan("automation", {"actions": [{"service": service, "entity_ids": ["lock.porta"]}]},
+                       "p", ENTITIES)
+    with pytest.raises(PlanError, match="do not support"):
+        build_plan("scene", {"name": "Fechar", "states": [{"entity_id": "lock.porta", "state": "on"}]}, "p",
+                   ENTITIES)
 
 
 def test_validate_handles_the_new_kinds_and_rejects_bad_ones():

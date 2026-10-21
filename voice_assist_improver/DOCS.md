@@ -50,20 +50,24 @@ entities must be exposed to Assist and allowed by the policy below, services com
 range-checked values, sentences are plain words, and nothing from a template is ever written. You always see
 the plan and confirm it first.
 
-## Safety policy
+## What the assistant may control
 
-By default suggestions only involve lights, switches, climate, covers, fans, valves and media players, and
-never entities whose device class is garage, garage door, gate or door. Locks and alarms are not in the list.
-Both lists are settings (*Domains suggestions may touch*, *Blocked device classes*) so you can widen or narrow
-them. Widening is your decision: a suggestion that can open a gate or unlock a door can be triggered by anyone
-who can speak to your assistant.
+Voice control is decided in Home Assistant, not here. An entity that is **not exposed to Assist** does not exist
+for this app: the voice agent cannot see or control it, and no suggestion can involve it. To keep an alarm, a
+lock or a gate away from voice, do not expose it (Settings → Voice assistants → Expose). Exposing it is what
+allows both the built-in Assist and the AI to act on it.
+
+On top of that, automations and scenes created by suggestions can only use a short list of services on lights,
+switches, fans, covers, climate, media players and valves. There is no service for locks or alarms in that list,
+so a suggestion cannot unlock a door or disarm an alarm. For the voice agent itself, the *Blocked tools*
+setting can hide specific tools (by name), but it cannot tell one entity from another: exposure is the control.
 
 ## Cost and privacy
 
 - Requests go to the Anthropic API with your key. Set a spending limit in the Anthropic Console as well.
 - The estimated spend is shown in the panel; the monthly cap stops AI calls when reached.
 - What people say is stored locally in this app's data folder and deleted after the retention period.
-- Locks, alarms, doors and gates are never given aliases or suggestions.
+- Suggestions only involve entities you exposed to Assist. You always confirm before anything is created.
 
 ## Choosing models
 

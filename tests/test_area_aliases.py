@@ -34,9 +34,8 @@ def test_duplicates_are_dropped_not_guessed():
     assert generate([ent("a", "Sala Led", "Sala"), ent("b", "Sala  LED", "Sala")]) == []
 
 
-def test_never_touches_unsafe_domains_or_classes():
-    ents = [ent("p", "Garagem Portão", "Garagem", "cover", device_class="gate"),
-            ent("l", "Sala Porta", "Sala", "lock"), ent("s", "Sala Tomada", "Sala", "switch")]
+def test_only_domains_with_natural_area_names_get_rule_aliases():
+    ents = [ent("l", "Sala Porta", "Sala", "lock"), ent("s", "Sala Tomada", "Sala", "switch")]
     assert generate(ents) == []
 
 
