@@ -258,3 +258,16 @@ async def test_suggestion_status_actions(tmp_path):
         assert (await client.post("/ui/api/suggestions/999/status", json={"status": "done"})).status_code == 404
     assert st.get_suggestion(sid)["status"] == "never"
     st.close()
+
+
+async def test_delete_interaction_removes_it_from_history_and_analysis(tmp_path):
+    client, st = make_ui(tmp_path)
+    rid = st.add_interaction(utterance="teste meu")
+    async with client:
+        recent = (await client.get("/ui/api/summary")).json()["recent"]
+        assert recent[0]["id"] == rid
+        assert (await client.delete(f"/ui/api/interactions/{rid}")).status_code == 200
+        assert (await client.delete(f"/ui/api/interactions/{rid}")).status_code == 404
+        assert (await client.get("/ui/api/summary")).json()["recent"] == []
+    assert st.top_phrases() == []
+    st.close()

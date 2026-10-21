@@ -95,6 +95,8 @@ const STR = {
     noData: "No data yet. Phrases that Assist cannot handle will show up here.",
     sug: "Suggestions", noSug: "No suggestions yet. The analysis runs daily; you can run it now.",
     analyze: "Analyze now", analyzing: "Analyzing…", lastRun: (r) => r ? `Last run: ${r}` : "Never run",
+    runStats: (r) => `${r.interactions} phrases analyzed, ${r.created} new, ${r.rejected} rejected`,
+    remove: "Delete", removeConfirm: "Delete this request from the history?",
     evidence: (n) => `said ${n}×`, alias: "alias", tip: "tip",
     apply: "Do it for me", applyConfirm: (a, e) => `Add the alias "${a}" to ${e}? The original name keeps working, and you can undo it.`,
     undoConfirm: (a, e) => `Remove the alias "${a}" from ${e}?`,
@@ -113,6 +115,8 @@ const STR = {
     noData: "Ainda sem dados. As frases que o Assist não entender vão aparecer aqui.",
     sug: "Sugestões", noSug: "Ainda sem sugestões. A análise roda todo dia; você pode rodar agora.",
     analyze: "Analisar agora", analyzing: "Analisando…", lastRun: (r) => r ? `Última análise: ${r}` : "Nunca rodou",
+    runStats: (r) => `${r.interactions} frases analisadas, ${r.created} novas, ${r.rejected} rejeitadas`,
+    remove: "Apagar", removeConfirm: "Apagar este pedido do histórico?",
     evidence: (n) => `dita ${n}×`, alias: "apelido", tip: "dica",
     apply: "Faça por mim", applyConfirm: (a, e) => `Adicionar o apelido "${a}" em ${e}? O nome original continua funcionando e dá para desfazer.`,
     undoConfirm: (a, e) => `Remover o apelido "${a}" de ${e}?`,
@@ -181,7 +185,8 @@ async function act(path, confirmText) {
 
 function renderSuggestions(list, analysis) {
   const box = $("sugs"); box.replaceChildren();
-  const info = analysis.last ? (analysis.last.error ? `${T.failed}: ${analysis.last.error}` : when(analysis.last.ts)) : "";
+  const last = analysis.last;
+  const info = last ? (last.error ? `${T.failed}: ${last.error}` : `${when(last.ts)} · ${T.runStats(last)}`) : "";
   $("analysis-info").textContent = T.lastRun(info) + " ";
   const btn = $("analyze");
   btn.disabled = analysis.running || !analysis.available;
@@ -211,6 +216,12 @@ function renderSuggestions(list, analysis) {
   }
 }
 
+async function removeRequest(id) {
+  if (!confirm(T.removeConfirm)) return;
+  try { await api(`interactions/${id}`, "DELETE"); } catch (e) { alert(e.message); }
+  await refresh();
+}
+
 async function setStatus(id, status) {
   try {
     await fetch(`api/suggestions/${id}/status`, { method: "POST", headers: { "content-type": "application/json" },
@@ -223,13 +234,14 @@ function renderTables(sum) {
   const top = $("top"); top.replaceChildren(el("tr", {}, el("th", {}, T.phrase), el("th", {}, T.times)));
   for (const p of sum.top_phrases) top.append(el("tr", {}, el("td", {}, p.phrase), el("td", {}, p.count)));
   const rec = $("recent");
-  rec.replaceChildren(el("tr", {}, ...[T.when, T.said, T.reply, T.tools, T.time, T.cost].map((h) => el("th", {}, h))));
+  rec.replaceChildren(el("tr", {}, ...[T.when, T.said, T.reply, T.tools, T.time, T.cost, ""].map((h) => el("th", {}, h))));
   for (const r of sum.recent) rec.append(el("tr", {},
     el("td", {}, when(r.ts)), el("td", {}, r.utterance),
     el("td", { class: r.error ? "err" : "" }, r.error ? `${T.failed}: ${r.error}` : r.reply),
     el("td", {}, r.tools.join(", ")),
     el("td", {}, r.latency_ms ? (r.latency_ms / 1000).toFixed(1) + " s" : ""),
-    el("td", {}, money(r.cost_usd))));
+    el("td", {}, money(r.cost_usd)),
+    el("td", {}, el("button", { onclick: () => removeRequest(r.id) }, T.remove))));
 }
 
 async function refresh() {

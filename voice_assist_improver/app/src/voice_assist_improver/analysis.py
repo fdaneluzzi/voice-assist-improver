@@ -201,6 +201,8 @@ class Analyzer:
                                         rejected=len(rejected), cost_usd=cost, ts=now)
             for reason in rejected:
                 log.info("suggestion rejected: %s", reason)
+            log.info("analysis: %d phrases, %d proposed, %d created, %d rejected",
+                     len(phrases), len(items), created, len(rejected))
             return {"status": "ok", "created": created, "rejected": len(rejected), "cost_usd": cost}
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"

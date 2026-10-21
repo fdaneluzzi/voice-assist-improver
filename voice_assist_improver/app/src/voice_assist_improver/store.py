@@ -194,6 +194,13 @@ class Store:
             out.append(d)
         return out
 
+    def delete_interaction(self, interaction_id: int) -> bool:
+        """Forget one recorded request (a test, or something the user does not want kept)."""
+        with self._lock:
+            cur = self._db.execute("DELETE FROM interactions WHERE id = ?", (interaction_id,))
+            self._db.commit()
+            return cur.rowcount > 0
+
     def top_phrases(self, days: int = 14, limit: int = 15, now: float | None = None) -> list[dict]:
         """Phrases that reached the LLM, most frequent first. `phrase` is the latest spelling seen."""
         now = now if now is not None else time.time()

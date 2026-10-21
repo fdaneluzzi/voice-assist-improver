@@ -61,13 +61,19 @@ def build_router(settings: Settings, store: Store, backend: Any, analyzer: Analy
             "daily": store.fallbacks_per_day(days=14, timezone=tz),
             "top_phrases": store.top_phrases(days=14, limit=10),
             "recent": [
-                {"ts": r["ts"], "utterance": r["utterance"], "reply": r["reply"],
+                {"id": r["id"], "ts": r["ts"], "utterance": r["utterance"], "reply": r["reply"],
                  "tools": [t["name"] for t in r["tools"]], "latency_ms": r["latency_ms"],
                  "cost_usd": r["cost_usd"], "error": r["error"], "model": r["model"]}
                 for r in store.recent_interactions(RECENT)],
             "analysis": {"running": bool(analyzer and analyzer.running), "available": analyzer is not None,
                          "last": last},
         }
+
+    @router.delete("/api/interactions/{interaction_id}")
+    async def delete_interaction(interaction_id: int):
+        if not store.delete_interaction(interaction_id):
+            raise HTTPException(404, "no such request")
+        return {"ok": True}
 
     @router.get("/api/suggestions")
     async def suggestions(status: str | None = None):
