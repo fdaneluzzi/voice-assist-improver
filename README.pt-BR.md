@@ -3,6 +3,7 @@
 **Faz o Assist do Home Assistant precisar cada vez menos de um LLM.**
 
 [![Adicionar repositório ao meu Home Assistant][badge]][add-repo]
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-fdaneluzzi-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/fdaneluzzi)
 
 [badge]: https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg
 [add-repo]: https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Ffdaneluzzi%2Fvoice-assist-improver
@@ -113,6 +114,15 @@ não uma garantia de cobrança, então defina também um limite de gasto no Cons
 Issues e pull requests são bem-vindos. Veja [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) para rodar a partir do
 código e [docs/DECISIONS.md](docs/DECISIONS.md) para entender por que ele é assim. A versão em inglês desta
 página é o [README.md](README.md).
+
+## Apoie
+
+O Voice Assist Improver é gratuito e mantido no tempo livre. Se ele ajuda você, um cafezinho é bem-vindo, e uma
+estrela no repositório também.
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-fdaneluzzi-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/fdaneluzzi)
+
+Prefere PIX? Chave aleatória: `aae9a1b1-11e2-4282-a16d-7df8f48ae903`
 
 ## Licença
 

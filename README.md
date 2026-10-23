@@ -3,6 +3,7 @@
 **Makes Home Assistant's Assist need an LLM less and less.**
 
 [![Add repository to my Home Assistant][badge]][add-repo]
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-fdaneluzzi-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/fdaneluzzi)
 
 [badge]: https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg
 [add-repo]: https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Ffdaneluzzi%2Fvoice-assist-improver
@@ -123,6 +124,13 @@ a billing guarantee, so set a spending limit in the Anthropic Console as well.
 Issues and pull requests are welcome. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) to run it from a checkout and
 [docs/DECISIONS.md](docs/DECISIONS.md) for why it is built the way it is. A Portuguese version of this page is in
 [README.pt-BR.md](README.pt-BR.md).
+
+## Support
+
+Voice Assist Improver is free and maintained in spare time. If it helps you, a coffee is appreciated, and
+so is a star on the repository.
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-fdaneluzzi-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/fdaneluzzi)
 
 ## License
 
