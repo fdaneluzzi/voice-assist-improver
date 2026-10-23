@@ -124,6 +124,13 @@ Issues and pull requests are welcome. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT
 [docs/DECISIONS.md](docs/DECISIONS.md) for why it is built the way it is. A Portuguese version of this page is in
 [README.pt-BR.md](README.pt-BR.md).
 
+## Support
+
+Voice Assist Improver is free and maintained in spare time. If it helps you, a coffee is appreciated, and
+so is a star on the repository.
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-fdaneluzzi-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/fdaneluzzi)
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
