@@ -2,6 +2,11 @@
 
 **Faz o Assist do Home Assistant precisar cada vez menos de um LLM.**
 
+[![License](https://img.shields.io/github/license/fdaneluzzi/voice-assist-improver)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/fdaneluzzi/voice-assist-improver)](https://github.com/fdaneluzzi/voice-assist-improver/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/fdaneluzzi/voice-assist-improver/ci.yml?branch=main&label=CI)](https://github.com/fdaneluzzi/voice-assist-improver/actions/workflows/ci.yml)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-fdaneluzzi-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/fdaneluzzi)
+
 [![Adicionar repositório ao meu Home Assistant][badge]][add-repo]
 
 [badge]: https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg
