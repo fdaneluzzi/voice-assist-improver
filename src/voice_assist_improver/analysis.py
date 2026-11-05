@@ -30,6 +30,8 @@ MAX_PHRASES = 40
 MAX_SUGGESTIONS = 15
 MAX_TIPS = 3
 MAX_TOOL_INPUT_CHARS = 160
+MAX_KNOWN = 40
+MAX_REJECTED = 10
 
 REPORT_TOOL = {
     "name": "report_suggestions",
@@ -95,6 +97,9 @@ cover open/closed with position; climate hvac mode with temperature).
 - Do not invent anything from words that look like speech-recognition mistakes unless the phrase repeats.
 - Phrases that genuinely need an LLM (weather, general questions, open conversation) need no suggestion.
 - Prefer phrases that repeat. Quality over quantity: an empty list is a good answer.
+- You also get what was already suggested or created (do not propose the same command again, even worded \
+differently or with other entities) and recent proposals that were rejected, with the reason (fix it, or \
+skip).
 - Write titles and details in the language the user asks for."""
 
 
@@ -125,7 +130,8 @@ def summarize_phrases(interactions: list[dict]) -> list[dict]:
     return sorted(groups.values(), key=lambda g: (-g["count"], -g["last"]))[:MAX_PHRASES]
 
 
-def build_prompt(phrases: list[dict], entities: list[dict], language: str) -> str:
+def build_prompt(phrases: list[dict], entities: list[dict], language: str, known: list[dict] | None = None,
+                 rejected: list[str] | None = None) -> str:
     lines = ["## Phrases that reached the LLM"]
     for g in phrases:
         tools = "; ".join(g["tools"]) or "no tools"
@@ -133,8 +139,26 @@ def build_prompt(phrases: list[dict], entities: list[dict], language: str) -> st
     lines.append("\n## Entities exposed to Assist (id | name | area | aliases)")
     for e in entities:
         lines.append(f"{e['id']} | {e['name']} | {e['area'] or '-'} | {', '.join(e['aliases']) or '-'}")
+    if known:
+        lines.append("\n## Already suggested or created (status | kind | what)")
+        for k in known[:MAX_KNOWN]:
+            what = (f"alias {k['alias']!r} -> {k['entity_id']}" if k["alias"]
+                    else "; ".join(k["sentences"][:2]) or k["phrase"] or k["title"])
+            lines.append(f"{k['status']} | {k['kind']} | {what}")
+    if rejected:
+        lines.append("\n## Proposals rejected in recent runs (and why)")
+        lines += [f"- {reason}" for reason in rejected[:MAX_REJECTED]]
     lines.append(f"\nWrite titles and details in: {language}.")
     return "\n".join(lines)
+
+
+def recent_rejections(runs: list[dict]) -> list[str]:
+    """Distinct rejection reasons of the latest runs, newest first."""
+    seen: dict[str, None] = {}
+    for run in runs:
+        for reason in run.get("rejections") or []:
+            seen.setdefault(reason, None)
+    return list(seen)
 
 
 def validate(items: list[dict], phrases: list[dict], entities: list[dict]) -> tuple[list[dict], list[str]]:
@@ -221,11 +245,13 @@ class Analyzer:
         usage = Usage()
         try:
             entities = await fetch_entities(self.s)
+            known = self.store.known_suggestions(now)
+            rejected = recent_rejections(self.store.recent_analysis_runs(3))
             response = await self.client.messages.create(
                 model=model, max_tokens=8192, system=system_prompt(), tools=[REPORT_TOOL],
                 output_config={"effort": "medium"},
                 messages=[{"role": "user",
-                           "content": build_prompt(phrases, entities, self.s.language)}])
+                           "content": build_prompt(phrases, entities, self.s.language, known, rejected)}])
             usage.add(response.usage)
             call = next((b for b in response.content if b.type == "tool_use"), None)
             items = list((call.input if call else {}).get("suggestions") or [])
@@ -236,7 +262,7 @@ class Analyzer:
                     created += 1
             cost = usage_record(model, usage)["cost_usd"]
             self.store.add_analysis_run(model=model, interactions=len(phrases), created=created,
-                                        rejected=len(rejected), cost_usd=cost, ts=now)
+                                        rejected=len(rejected), cost_usd=cost, ts=now, rejections=rejected)
             for reason in rejected:
                 log.info("suggestion rejected: %s", reason)
             log.info("analysis: %d phrases, %d proposed, %d created, %d rejected",

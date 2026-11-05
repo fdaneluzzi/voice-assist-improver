@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS interactions (
     output_tokens INTEGER,
     cache_read_tokens  INTEGER,
     cache_write_tokens INTEGER,
-    cost_usd      REAL
+    cost_usd      REAL,
+    history       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_interactions_ts ON interactions(ts);
 
@@ -63,20 +64,28 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
     created      INTEGER,
     rejected     INTEGER,
     cost_usd     REAL,
-    error        TEXT
+    error        TEXT,
+    rejections   TEXT
 );
 """
 
 SUGGESTION_MIGRATIONS = {"payload": "TEXT", "applied": "TEXT"}
+ANALYSIS_MIGRATIONS = {"rejections": "TEXT"}
 
 # Suggestion lifecycle. "never" is the blocklist: such a suggestion is never created again.
 STATUSES = ("new", "done", "dismissed", "never")
 DISMISS_QUIET_DAYS = 30
+COMMAND_KINDS = ("automation", "scene")  # suggestions that add trigger sentences to Assist
+
+
+def sentence_keys(payload: dict | None) -> set[str]:
+    """The trigger sentences of a command plan, normalized. Two commands sharing one would both answer."""
+    return {k for k in (norm(str(x)) for x in (payload or {}).get("sentences") or []) if k}
 
 # Columns added after the first version; added to databases created earlier.
 MIGRATIONS = {
     "input_tokens": "INTEGER", "output_tokens": "INTEGER", "cache_read_tokens": "INTEGER",
-    "cache_write_tokens": "INTEGER", "cost_usd": "REAL",
+    "cache_write_tokens": "INTEGER", "cost_usd": "REAL", "history": "TEXT",
 }
 
 
@@ -96,6 +105,10 @@ class Store:
             for column, kind in SUGGESTION_MIGRATIONS.items():
                 if column not in have:
                     self._db.execute(f"ALTER TABLE suggestions ADD COLUMN {column} {kind}")
+            have = {row["name"] for row in self._db.execute("PRAGMA table_info(analysis_runs)")}
+            for column, kind in ANALYSIS_MIGRATIONS.items():
+                if column not in have:
+                    self._db.execute(f"ALTER TABLE analysis_runs ADD COLUMN {column} {kind}")
             self._db.commit()
 
     def close(self) -> None:
@@ -116,17 +129,19 @@ class Store:
         error: str | None = None,
         ts: float | None = None,
         usage: dict | None = None,
+        history: list[dict] | None = None,
     ) -> int:
         usage = usage or {}
         with self._lock:
             cur = self._db.execute(
                 "INSERT INTO interactions (ts, client, model, backend, utterance, reply, tools,"
                 " latency_ms, first_text_ms, error, input_tokens, output_tokens, cache_read_tokens,"
-                " cache_write_tokens, cost_usd) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " cache_write_tokens, cost_usd, history) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (ts if ts is not None else time.time(), client, model, backend, utterance, reply,
                  json.dumps(tools or [], ensure_ascii=False), latency_ms, first_text_ms, error,
                  usage.get("input_tokens"), usage.get("output_tokens"), usage.get("cache_read_tokens"),
-                 usage.get("cache_write_tokens"), usage.get("cost_usd")),
+                 usage.get("cache_write_tokens"), usage.get("cost_usd"),
+                 json.dumps(history or [], ensure_ascii=False)),
             )
             self._db.commit()
             return int(cur.lastrowid)
@@ -199,6 +214,7 @@ class Store:
         for r in rows:
             d = dict(r)
             d["tools"] = json.loads(d["tools"] or "[]")
+            d["history"] = json.loads(d.get("history") or "[]")
             out.append(d)
         return out
 
@@ -247,6 +263,8 @@ class Store:
             row = self._db.execute(
                 "SELECT id, status, updated FROM suggestions WHERE fingerprint = ?", (fingerprint,)
             ).fetchone()
+            if row is None and kind in COMMAND_KINDS:
+                row = self._same_command(sentence_keys(payload))
             if row is not None:
                 quiet_until = row["updated"] + DISMISS_QUIET_DAYS * 86400
                 if not (row["status"] == "dismissed" and now >= quiet_until):
@@ -265,6 +283,48 @@ class Store:
                  json.dumps(payload) if payload else None, now, now))
             self._db.commit()
             return int(cur.lastrowid)
+
+    def _same_command(self, keys: set[str], exclude_id: int | None = None,
+                      statuses: tuple[str, ...] | None = None) -> sqlite3.Row | None:
+        """An existing command suggestion that shares a trigger sentence with `keys` (caller holds the lock).
+        One that still counts (not dismissed) wins over a dismissed one."""
+        if not keys:
+            return None
+        marks = ",".join("?" for _ in COMMAND_KINDS)
+        rows = self._db.execute(
+            f"SELECT id, status, updated, payload FROM suggestions WHERE kind IN ({marks})"
+            " ORDER BY updated DESC", COMMAND_KINDS).fetchall()
+        found = [r for r in rows if r["id"] != exclude_id and (statuses is None or r["status"] in statuses)
+                 and keys & sentence_keys(json.loads(r["payload"]) if r["payload"] else None)]
+        return next((r for r in found if r["status"] != "dismissed"), found[0] if found else None)
+
+    def applied_command_overlapping(self, suggestion_id: int, payload: dict | None) -> int | None:
+        """Id of ANOTHER suggestion whose command is already created in Home Assistant with one of these
+        trigger sentences, or None."""
+        with self._lock:
+            row = self._same_command(sentence_keys(payload), exclude_id=suggestion_id, statuses=("done",))
+            if row is None:
+                return None
+            applied = self._db.execute(
+                "SELECT applied FROM suggestions WHERE id = ?", (row["id"],)).fetchone()
+        return int(row["id"]) if applied and applied["applied"] else None
+
+    def known_suggestions(self, now: float | None = None) -> list[dict]:
+        """Suggestions the analysis must not propose again: open, done, blocked, or dismissed recently."""
+        now = now if now is not None else time.time()
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT kind, status, phrase, title, alias, entity_id, payload, updated FROM suggestions"
+                " ORDER BY updated DESC").fetchall()
+        out = []
+        for r in rows:
+            if r["status"] == "dismissed" and now >= r["updated"] + DISMISS_QUIET_DAYS * 86400:
+                continue
+            d = dict(r)
+            payload = json.loads(d.pop("payload")) if d["payload"] else {}
+            d["sentences"] = (payload or {}).get("sentences", [])
+            out.append(d)
+        return out
 
     def list_suggestions(self, status: str | None = None) -> list[dict]:
         query = "SELECT * FROM suggestions"
@@ -308,15 +368,27 @@ class Store:
     # ----- analysis runs -----
 
     def add_analysis_run(self, *, model: str, interactions: int, created: int, rejected: int,
-                         cost_usd: float, error: str | None = None, ts: float | None = None) -> int:
+                         cost_usd: float, error: str | None = None, ts: float | None = None,
+                         rejections: list[str] | None = None) -> int:
         with self._lock:
             cur = self._db.execute(
-                "INSERT INTO analysis_runs (ts, model, interactions, created, rejected, cost_usd, error)"
-                " VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO analysis_runs (ts, model, interactions, created, rejected, cost_usd, error,"
+                " rejections) VALUES (?,?,?,?,?,?,?,?)",
                 (ts if ts is not None else time.time(), model, interactions, created, rejected, cost_usd,
-                 error))
+                 error, json.dumps(rejections or [], ensure_ascii=False)))
             self._db.commit()
             return int(cur.lastrowid)
+
+    def recent_analysis_runs(self, limit: int = 30) -> list[dict]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM analysis_runs ORDER BY ts DESC LIMIT ?", (limit,)).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["rejections"] = json.loads(d.get("rejections") or "[]")
+            out.append(d)
+        return out
 
     def last_analysis_run(self) -> dict | None:
         with self._lock:
