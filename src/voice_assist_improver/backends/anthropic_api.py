@@ -12,15 +12,19 @@ Design notes:
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
 from ..config import Settings
 from ..cost import Usage, usage_record
 from ..i18n import t
+from ..memory import expand_messages
 from ..prompts import load_voice_prompt
 from ..tools import VoiceToolRegistry
 from .base import ChatRequest, Done, Event, TextDelta, ToolCall, ToolResult
+
+log = logging.getLogger(__name__)
 
 BETA_FALLBACK = "server-side-fallback-2026-07-01"
 # Server-side fallback ("default") exists on these models only. Haiku 5.5 has none: sending the parameter
@@ -81,10 +85,27 @@ class AnthropicBackend:
 
     async def stream(self, request: ChatRequest) -> AsyncIterator[Event]:
         await self.registry.refresh()
+        tools = self.tool_list()
+        replayed = expand_messages(request.messages, {t["name"] for t in tools})
+        plain = [{"role": m["role"], "content": m["content"]} for m in request.messages]
+        # Earlier tool calls are given back to the model (see memory.py). If the API refuses that history
+        # before anything happened, answer again from the plain text instead of failing the request.
+        for messages in [replayed, plain] if replayed != plain else [plain]:
+            started = False
+            try:
+                async for event in self._converse(request, messages, tools):
+                    started = True
+                    yield event
+                return
+            except Exception as exc:
+                if started or messages is plain or getattr(exc, "status_code", None) != 400:
+                    raise
+                log.warning("the API refused the replayed tool history, retrying without it: %s", exc)
+
+    async def _converse(self, request: ChatRequest, messages: list[dict],
+                        tools: list[dict]) -> AsyncIterator[Event]:
         model = self.pick_model(request.model)
         system = self.system_blocks(request.system)
-        tools = self.tool_list()
-        messages: list[dict] = [{"role": m["role"], "content": m["content"]} for m in request.messages]
         usage = Usage()
         spoke = False
         ends_clean = True

@@ -22,6 +22,7 @@ from .backends import Backend, ChatRequest, Done, TextDelta, ToolCall, ToolResul
 from .budget import Budget
 from .config import Settings
 from .i18n import t
+from .memory import LOOKBACK_SECONDS, attach_tool_traces, index_interactions
 from .models import ModelCatalog
 from .store import Store
 from .ui import build_router
@@ -29,11 +30,21 @@ from .ui import build_router
 log = logging.getLogger(__name__)
 
 OLLAMA_VERSION = "0.12.0"
-MAX_RECORDED_RESULT = 600
+MAX_RECORDED_RESULT = 4000  # long enough to keep the "failed" list of an area-wide command
+MAX_RECORDED_HISTORY = 400
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _history_entry(message: dict) -> dict:
+    """What the caller sent before the current turn, kept short, to diagnose conversation problems.
+    Roles and the presence of tool calls are kept because they show what the caller does not pass on."""
+    entry = {"role": message.get("role"), "content": str(message.get("content") or "")[:MAX_RECORDED_HISTORY]}
+    if message.get("tool_calls"):
+        entry["tool_calls"] = len(message["tool_calls"])
+    return entry
 
 
 def create_app(settings: Settings, backend: Backend, store: Store, budget: Budget | None = None,
@@ -116,7 +127,11 @@ def create_app(settings: Settings, backend: Backend, store: Store, budget: Budge
         stream = body.get("stream", True)
         name = body.get("model") or model
         caller = request.client.host if request.client else "unknown"
+        if len(turns) > 1:  # earlier turns: give back the tool calls Home Assistant never sees
+            index = index_interactions(store.interactions_since(time.time() - LOOKBACK_SECONDS))
+            turns = attach_tool_traces(turns, index)
         req = ChatRequest(model=model, messages=turns, system=system, client=caller)
+        history = [_history_entry(m) for m in raw_messages if m.get("role") != "system"][:-1]
         started = time.monotonic()
 
         async def events() -> AsyncIterator[str]:
@@ -164,7 +179,7 @@ def create_app(settings: Settings, backend: Backend, store: Store, budget: Budge
                         model=(usage or {}).get("model", model),
                         backend=backend.name, tools=tools,
                         latency_ms=int((time.monotonic() - started) * 1000),
-                        first_text_ms=first_ms, error=error, usage=usage)
+                        first_text_ms=first_ms, error=error, usage=usage, history=history)
                 except Exception:  # recording must never break the voice path
                     log.exception("could not record the interaction")
 

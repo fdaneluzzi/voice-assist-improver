@@ -12,7 +12,6 @@ The executors write through Home Assistant's own configuration API, verify what 
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import re
 from typing import Any
 
@@ -25,7 +24,7 @@ from .ws import HAError
 
 MAX_SENTENCES = 4
 MAX_ACTIONS = 6
-MAX_ENTITIES_PER_ACTION = 8
+MAX_ENTITIES_PER_ACTION = 20  # a house can have 9 air conditioners: "turn them all off"
 MAX_SCENE_ENTITIES = 20
 MAX_SENTENCE_LENGTH = 80
 MAX_RESPONSE_LENGTH = 120
@@ -214,9 +213,9 @@ def build_plan(kind: str, item: dict, user_phrase: str, entities: list[dict]) ->
 
 
 def plan_fingerprint_text(kind: str, plan: dict) -> str:
-    """What identifies a plan for de-duplication, independent of wording."""
-    core = plan.get("actions") if kind == "automation" else {"n": plan.get("name"), "s": plan.get("states")}
-    return norm(plan["sentences"][0]) + "|" + hashlib.sha1(repr(core).encode()).hexdigest()[:12]
+    """What identifies a command suggestion: the phrase the user said, not the entities the model happened to
+    pick this time (they change from one analysis to the next, which used to create duplicates)."""
+    return norm(plan["sentences"][0])
 
 
 # ---------- Home Assistant configuration ----------

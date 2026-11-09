@@ -10,7 +10,7 @@ import logging
 from importlib import resources
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -81,6 +81,19 @@ def build_router(settings: Settings, store: Store, backend: Any, analyzer: Analy
                          "last": last},
         }
 
+    @router.get("/api/export")
+    async def export(limit: int = Query(200, ge=1, le=1000)):
+        """Everything needed to diagnose the app from outside: full interactions (tools with their results,
+        the history the caller sent), suggestions with their plans, and the analysis runs with the proposals
+        that were rejected and why. Read-only, behind the same ingress allow-list as the rest of the UI."""
+        return {
+            "interactions": store.recent_interactions(limit),
+            "suggestions": [
+                {**_public_suggestion(s), "fingerprint": s["fingerprint"], "created": s["created"]}
+                for s in store.list_suggestions()],
+            "analysis_runs": store.recent_analysis_runs(30),
+        }
+
     @router.delete("/api/interactions/{interaction_id}")
     async def delete_interaction(interaction_id: int):
         if not store.delete_interaction(interaction_id):
@@ -122,6 +135,10 @@ def build_router(settings: Settings, store: Store, backend: Any, analyzer: Analy
                 s = alias_suggestion(suggestion_id)
                 message = await apply_alias(settings, s["entity_id"], s["alias"])
             elif s["kind"] in ("automation", "scene") and s["payload"]:
+                other = store.applied_command_overlapping(suggestion_id, s["payload"])
+                if other is not None:
+                    raise HTTPException(
+                        409, f"suggestion #{other} already created a command with the same sentence")
                 ref = await apply_plan(settings, s, s["payload"], await fetch_entities(settings))
                 store.set_suggestion_applied(suggestion_id, ref)
                 message = f"created {' and '.join(k for k in ('scene', 'automation') if ref.get(k))}"
